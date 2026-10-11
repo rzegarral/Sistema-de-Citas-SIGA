@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIGA - Mantenimiento y Reportes</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @media print {
+      body {
+        font-size: 9px !important;
+        background: white !important;
+        color: black !important;
+      }
+      header, .no-print, button {
+        display: none !important;
+      }
+      .print-header {
+        display: block !important;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 11px;
+        margin-bottom: 10px;
+        border-bottom: 2px solid black;
+        padding-bottom: 4px;
+      }
+      table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+      }
+      th, td {
+        padding: 3px 5px !important;
+        font-size: 9px !important;
+        border: 1px solid #94a3b8 !important;
+      }
+      @page {
+        size: auto;
+        margin: 10mm;
+        @bottom-right {
+          content: "Página " counter(page) " de " counter(pages);
+          font-size: 8px;
+        }
+      }
+    }
+    .print-header { display: none; }
+  </style>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800">
+
+  <header class="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center no-print">
+    <div class="flex items-center gap-3">
+      <h1 class="text-xl font-bold">⚙️ SIGA - Mantenimiento y Reportes</h1>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="agenda.html" class="text-sm bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg text-white font-medium">
+        📅 Ir a Agenda
+      </a>
+      <span id="userEmail" class="text-xs text-slate-400 font-mono hidden sm:inline">...</span>
+      <button onclick="cerrarSesion()" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium">
+        Salir 🚪
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-7xl mx-auto mt-6 px-4">
+    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 no-print">
+      <div class="flex items-center gap-3 w-full sm:w-auto">
+        <label class="text-sm font-semibold text-slate-600">Seleccionar Módulo:</label>
+        <select id="selectTabla" onchange="cambiarTabla()" class="px-3 py-2 border rounded-lg font-medium bg-slate-50 text-slate-700">
+          <option value="horarios">Horarios</option>
+          <option value="personal">Personal</option>
+          <option value="servicios">Servicios</option>
+          <option value="clientes">Clientes</option>
+          <option value="configuracion">Configuración</option>
+          <option value="reporte_produccion">📊 Reporte de Producción por Fechas</option>
+        </select>
+      </div>
+
+      <div id="contenedorBotonesAccion" class="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+        <button onclick="exportarExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1.5 shadow-sm">
+          <span>📊</span> Exportar Excel (CSV)
+        </button>
+        <button onclick="imprimirReporte()" class="bg-slate-600 hover:bg-slate-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1.5 shadow-sm">
+          <span>🖨️</span> Imprimir / Reporte
+        </button>
+        <button id="btnNuevoReg" onclick="abrirModalNuevoRegistro()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-1.5 shadow-md">
+          <span>➕</span> Nuevo Registro
+        </button>
+      </div>
+    </div>
+
+    <!-- Filtro exclusivo para Reporte de Producción -->
+    <div id="filtroProduccion" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mt-4 hidden no-print flex flex-wrap gap-4 items-center">
+      <div>
+        <label class="block text-xs font-semibold text-slate-600">Fecha Inicio:</label>
+        <input type="date" id="fechaInicioProd" class="px-3 py-1.5 border rounded-lg text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600">Fecha Fin:</label>
+        <input type="date" id="fechaFinProd" class="px-3 py-1.5 border rounded-lg text-sm">
+      </div>
+      <div class="self-end">
+        <button onclick="cargarReporteProduccion()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 rounded-lg font-bold">Generar Reporte Analítico</button>
+      </div>
+    </div>
+
+    <!-- Cabecera exclusiva para impresión -->
+    <div id="printHeaderTitle" class="print-header"></div>
+
+    <!-- Contenedor de Tabla -->
+    <div class="bg-white rounded-xl shadow-md border border-slate-200 mt-4 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table id="tablaMantenimiento" class="w-full text-left border-collapse text-xs">
+          <thead id="tablaHead" class="bg-slate-50 text-slate-700 uppercase text-[11px] border-b"></thead>
+          <tbody id="tablaBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Dinámico de Edición / Creación -->
+  <div id="modalMantenimiento" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
+      <h3 id="modalTitle" class="text-xl font-bold mb-4 text-slate-800 border-b pb-2">✏️ Editar Registro</h3>
+      <form id="formMantenimiento" onsubmit="guardarRegistro(event)" class="space-y-3">
+        <div id="modalCampos" class="space-y-3"></div>
+        <div class="flex justify-end gap-3 pt-4 border-t">
+          <button type="button" onclick="cerrarModal()" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">Cancelar</button>
+          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow text-sm">Guardar Cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://sdrbgwhivwxrmuytrcog.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkcmJnd2hpdnd4cm11eXRyY29nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NTUyNzcsImV4cCI6MjEwNzEzMTI3N30.vsFieR-6tyMgx_fpZhO7RSjA3Z3BzJzR91Xp4rDnObU";
+    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let tablaActual = "horarios";
+    let datosTabla = [];
+    let personalCache = {};
+    let registroEnEdicionIndex = null;
+
+    async function protegerRuta() {
+      const { data: { session } } = await _supabase.auth.getSession();
+      if (!session) window.location.href = "login.html";
+      else document.getElementById('userEmail').innerText = session.user.email;
+    }
+    protegerRuta();
+
+    async function cerrarSesion() {
+      await _supabase.auth.signOut();
+      window.location.href = "login.html";
+    }
+
+    async function precargarPersonal() {
+      const { data } = await _supabase.from('personal').select('*');
+      if (data) {
+        data.forEach(p => {
+          personalCache[p.id_profesional] = `${p.nombre} ${p.apellido || ''}`.trim();
+        });
+      }
+    }
+
+    async function cambiarTabla() {
+      tablaActual = document.getElementById('selectTabla').value;
+      const filtroProd = document.getElementById('filtroProduccion');
+      const btnNuevo = document.getElementById('btnNuevoReg');
+
+      if (tablaActual === 'reporte_produccion') {
+        filtroProd.classList.remove('hidden');
+        btnNuevo.classList.add('hidden');
+        const hoy = new Date().toISOString().split('T')[0];
+        document.getElementById('fechaInicioProd').value = hoy;
+        document.getElementById('fechaFinProd').value = hoy;
+        cargarReporteProduccion();
+      } else {
+        filtroProd.classList.add('hidden');
+        btnNuevo.classList.remove('hidden');
+        await cargarDatosTabla();
+      }
+    }
+
+    async function cargarDatosTabla() {
+      await precargarPersonal();
+      const body = document.getElementById('tablaBody');
+      const head = document.getElementById('tablaHead');
+      body.innerHTML = `<tr><td colspan="10" class="p-8 text-center text-slate-500">Cargando datos...</td></tr>`;
+
+      const { data, error } = await _supabase.from(tablaActual).select('*');
+      if (error) {
+        body.innerHTML = `<tr><td colspan="10" class="p-8 text-center text-red-500">Error: ${error.message}</td></tr>`;
+        return;
+      }
+
+      datosTabla = data || [];
+      if (datosTabla.length === 0) {
+        head.innerHTML = `<tr><th class="p-3">Información</th></tr>`;
+        body.innerHTML = `<tr><td class="p-6 text-center text-slate-400">No hay registros en esta tabla.</td></tr>`;
+        return;
+      }
+
+      const columnas = Object.keys(datosTabla[0]);
+      let headHtml = `<tr>`;
+      columnas.forEach(col => {
+        headHtml += `<th class="p-2.5">${col.toUpperCase()}</th>`;
+      });
+      headHtml += `<th class="p-2.5 text-center no-print">Acciones</th></tr>`;
+      head.innerHTML = headHtml;
+
+      let bodyHtml = '';
+      datosTabla.forEach((row, idx) => {
+        const esDescanso = tablaActual === 'horarios' && row.estado === 'DESCANSA';
+        const claseFila = esDescanso ? 'text-red-600 font-semibold bg-red-50/50' : 'hover:bg-slate-50';
+
+        bodyHtml += `<tr class="${claseFila} transition">`;
+        columnas.forEach(col => {
+          let val = row[col] !== null && row[col] !== undefined ? row[col] : '';
+          if (col === 'id_profesional' && personalCache[val]) {
+            val = `<span class="font-semibold text-blue-600">${val}</span> (${personalCache[val]})`;
+          }
+          bodyHtml += `<td class="p-2">${val}</td>`;
+        });
+
+        bodyHtml += `
+          <td class="p-2 text-center flex justify-center gap-1.5 no-print">
+            <button onclick="abrirModalEditar(${idx})" class="bg-amber-100 hover:bg-amber-200 text-amber-800 px-2 py-0.5 rounded text-[11px] font-semibold">✏️ Editar</button>
+            <button onclick="eliminarRegistro(${idx})" class="bg-red-100 hover:bg-red-200 text-red-800 px-2 py-0.5 rounded text-[11px] font-semibold">🗑️ Borrar</button>
+          </td>
+        `;
+        bodyHtml += `</tr>`;
+      });
+      body.innerHTML = bodyHtml;
+    }
+
+    async function cargarReporteProduccion() {
+      await precargarPersonal();
+      const fInicio = document.getElementById('fechaInicioProd').value;
+      const fFin = document.getElementById('fechaFinProd').value;
+
+      const body = document.getElementById('tablaBody');
+      const head = document.getElementById('tablaHead');
+      body.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-500">Calculando reporte de producción...</td></tr>`;
+
+      const { data: citas, error } = await _supabase
+        .from('citas')
+        .select(`
+          id_cita, fecha, estado,
+          detalle_cita (id_servicio, id_profesional, hora_inicio, hora_fin, servicios(nombre_servicio, precio))
+        `)
+        .gte('fecha', fInicio)
+        .lte('fecha', fFin);
+
+      if (error) {
+        body.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-red-500">Error: ${error.message}</td></tr>`;
+        return;
+      }
+
+      let resumenPersonal = {};
+      Object.keys(personalCache).forEach(idProf => {
+        resumenPersonal[idProf] = {
+          nombre: personalCache[idProf],
+          serviciosRealizados: {},
+          tiempoOcupadoMinutos: 0,
+          produccionTotal: 0
+        };
+      });
+
+      (citas || []).forEach(c => {
+        if (c.estado !== 'CANCELADA' && c.detalle_cita) {
+          c.detalle_cita.forEach(det => {
+            const prof = det.id_profesional;
+            if (!resumenPersonal[prof]) {
+              resumenPersonal[prof] = { nombre: prof, serviciosRealizados: {}, tiempoOcupadoMinutos: 0, produccionTotal: 0 };
+            }
+
+            const nombreServ = det.servicios ? det.servicios.nombre_servicio : 'General';
+            const precioServ = det.servicios && det.servicios.precio ? parseFloat(det.servicios.precio) : 0;
+            
+            // Cálculo basado estrictamente en la diferencia real entre hora_inicio y hora_fin
+            let minutosServicio = 30;
+            if (det.hora_inicio && det.hora_fin) {
+              const [hIni, mIni] = det.hora_inicio.substring(0,5).split(':').map(Number);
+              const [hFin, mFin] = det.hora_fin.substring(0,5).split(':').map(Number);
+              const diff = (hFin * 60 + mFin) - (hIni * 60 + mIni);
+              if (diff > 0) minutosServicio = diff;
+            }
+
+            resumenPersonal[prof].tiempoOcupadoMinutos += minutosServicio;
+            resumenPersonal[prof].produccionTotal += precioServ;
+
+            if (!resumenPersonal[prof].serviciosRealizados[nombreServ]) {
+              resumenPersonal[prof].serviciosRealizados[nombreServ] = 0;
+            }
+            resumenPersonal[prof].serviciosRealizados[nombreServ]++;
+          });
+        }
+      });
+
+      const minutosJornadaTotalDiaria = 600; 
+      const diffDias = Math.max(1, Math.ceil((new Date(fFin) - new Date(fInicio)) / (1000 * 60 * 60 * 24)) + 1);
+
+      head.innerHTML = `
+        <tr>
+          <th class="p-2.5">TRABAJADORA</th>
+          <th class="p-2.5">SERVICIOS REALIZADOS</th>
+          <th class="p-2.5">TIEMPO OCUPADO (REAL)</th>
+          <th class="p-2.5">TIEMPO LIBRE / INACTIVO</th>
+          <th class="p-2.5">PRODUCCIÓN TOTAL</th>
+        </tr>
+      `;
+
+      let bodyHtml = '';
+      Object.keys(resumenPersonal).forEach(idProf => {
+        const item = resumenPersonal[idProf];
+        const horasOcupadas = (item.tiempoOcupadoMinutos / 60).toFixed(1);
+        const minutosDisponiblesTotales = minutosJornadaTotalDiaria * diffDias;
+        const minutosLibres = Math.max(0, minutosDisponiblesTotales - item.tiempoOcupadoMinutos);
+        const horasLibres = (minutosLibres / 60).toFixed(1);
+
+        let serviciosStr = Object.entries(item.serviciosRealizados).map(([s, cant]) => `${s}: ${cant}`).join('<br>');
+        if (!serviciosStr) serviciosStr = 'Ninguno';
+
+        bodyHtml += `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2 font-semibold text-slate-700">${item.nombre} (${idProf})</td>
+            <td class="p-2 text-[11px]">${serviciosStr}</td>
+            <td class="p-2">${item.tiempoOcupadoMinutos} min (${horasOcupadas} hrs)</td>
+            <td class="p-2 text-amber-700 font-semibold">${minutosLibres} min (${horasLibres} hrs)</td>
+            <td class="p-2 font-bold text-emerald-700">S/ ${item.produccionTotal.toFixed(2)}</td>
+          </tr>
+        `;
+      });
+
+      datosTabla = Object.values(resumenPersonal);
+      body.innerHTML = bodyHtml;
+    }
+
+    function imprimirReporte() {
+      const ahora = new Date();
+      const fechaStr = ahora.toLocaleDateString('es-ES');
+      const horaStr = ahora.toLocaleTimeString('es-ES');
+      const tituloModulo = tablaActual === 'reporte_produccion' ? 'REPORTE ANALÍTICO DE PRODUCCIÓN Y TIEMPOS' : `REPORTE DE LA TABLA: ${tablaActual.toUpperCase()}`;
+
+      const headerDiv = document.getElementById('printHeaderTitle');
+      headerDiv.innerText = `${tituloModulo} | FECHA: ${fechaStr} - HORA: ${horaStr}`;
+      
+      window.print();
+    }
+
+    function obtenerClavePrimaria(row) {
+      if (row.id_horario) return { campo: 'id_horario', valor: row.id_horario };
+      if (row.id_profesional && row.dia_semana && tablaActual === 'horarios') return { compuesto: true, id_profesional: row.id_profesional, dia_semana: row.dia_semana };
+      if (row.id_servicio) return { campo: 'id_servicio', valor: row.id_servicio };
+      if (row.id_personal) return { campo: 'id_personal', valor: row.id_personal };
+      if (row.id_profesional) return { campo: 'id_profesional', valor: row.id_profesional };
+      if (row.id_cliente) return { campo: 'id_cliente', valor: row.id_cliente };
+      if (row.parametro) return { campo: 'parametro', valor: row.parametro };
+      const primeraCol = Object.keys(row)[0];
+      return { campo: primeraCol, valor: row[primeraCol] };
+    }
+
+    function abrirModalNuevoRegistro() {
+      if (datosTabla.length === 0) {
+        alert("No hay estructura definida para esta tabla.");
+        return;
+      }
+      registroEnEdicionIndex = null;
+      document.getElementById('modalTitle').innerText = `➕ Nuevo Registro en ${tablaActual.toUpperCase()}`;
+      
+      const columnas = Object.keys(datosTabla[0]);
+      let camposHtml = '';
+      columnas.forEach(col => {
+        camposHtml += `
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col}</label>
+            <input type="text" name="${col}" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Ingrese ${col}...">
+          </div>
+        `;
+      });
+      document.getElementById('modalCampos').innerHTML = camposHtml;
+      document.getElementById('modalMantenimiento').classList.remove('hidden');
+    }
+
+    function abrirModalEditar(idx) {
+      registroEnEdicionIndex = idx;
+      const row = datosTabla[idx];
+      document.getElementById('modalTitle').innerText = `✏️ Editar Registro (${tablaActual.toUpperCase()})`;
+
+      const columnas = Object.keys(row);
+      let camposHtml = '';
+      columnas.forEach(col => {
+        const valorActual = row[col] !== null && row[col] !== undefined ? row[col] : '';
+        const esClavePrincipal = col === 'id_horario' || col === 'id_servicio' || col === 'id_profesional' || col === 'id_cliente' || col === 'parametro';
+        
+        camposHtml += `
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col} ${esClavePrincipal ? '(ID)' : ''}</label>
+            <input type="text" name="${col}" value="${valorActual}" class="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50">
+          </div>
+        `;
+      });
+      document.getElementById('modalCampos').innerHTML = camposHtml;
+      document.getElementById('modalMantenimiento').classList.remove('hidden');
+    }
+
+    function cerrarModal() {
+      document.getElementById('modalMantenimiento').classList.add('hidden');
+    }
+
+    async function guardarRegistro(e) {
+      e.preventDefault();
+      const form = document.getElementById('formMantenimiento');
+      const formData = new FormData(form);
+      let payload = {};
+      
+      formData.forEach((val, key) => {
+        payload[key] = val === "" ? null : val;
+      });
+
+      if (registroEnEdicionIndex !== null) {
+        const rowOriginal = datosTabla[registroEnEdicionIndex];
+        const pk = obtenerClavePrimaria(rowOriginal);
+
+        let query = _supabase.from(tablaActual).update(payload);
+        if (pk.compuesto) {
+          query = query.eq('id_profesional', pk.id_profesional).eq('dia_semana', pk.dia_semana);
+        } else {
+          query = query.eq(pk.campo, pk.valor);
+        }
+
+        const { error } = await query;
+        if (error) { alert("Error al actualizar: " + error.message); return; }
+      } else {
+        const { error } = await _supabase.from(tablaActual).insert([payload]);
+        if (error) { alert("Error al insertar: " + error.message); return; }
+      }
+
+      cerrarModal();
+      cargarDatosTabla();
+    }
+
+    async function eliminarRegistro(idx) {
+      const row = datosTabla[idx];
+      if (!confirm("¿Está plenamente seguro de eliminar este registro de forma permanente?")) return;
+
+      const pk = obtenerClavePrimaria(row);
+      let query = _supabase.from(tablaActual).delete();
+
+      if (pk.compuesto) {
+        query = query.eq('id_profesional', pk.id_profesional).eq('dia_semana', pk.dia_semana);
+      } else {
+        query = query.eq(pk.campo, pk.valor);
+      }
+
+      const { error } = await query;
+      if (error) { alert("Error al eliminar: " + error.message); return; }
+
+      cargarDatosTabla();
+    }
+
+    function exportarExcel() {
+      if (datosTabla.length === 0) {
+        alert("No hay datos para exportar.");
+        return;
+      }
+
+      const columnas = Object.keys(datosTabla[0]);
+      let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+      csvContent += columnas.join(",") + "\r\n";
+
+      datosTabla.forEach(row => {
+        let fila = columnas.map(col => {
+          let val = row[col] !== null && row[col] !== undefined ? String(row[col]) : '';
+          return `"${val.replace(/"/g, '""')}"`;
+        });
+        csvContent += fila.join(",") + "\r\n";
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `reporte_${tablaActual}_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    cambiarTabla();
+  </script>
+</body>
+</html>

@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIGA - Agenda Centralizada</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800">
+
+  <header class="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center">
+    <div class="flex items-center gap-3">
+      <h1 class="text-xl font-bold">📅 SIGA - Agenda Centralizada</h1>
+      <span id="labelFechaActual" class="text-xs bg-blue-600 px-3 py-1 rounded-full font-medium">--</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="mantenimiento.html" class="text-sm bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-200">
+        ⚙️ Mantenimientos y Reportes
+      </a>
+      <span id="userEmail" class="text-xs text-slate-400 font-mono hidden sm:inline">...</span>
+      <button onclick="cerrarSesion()" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium">
+        Salir 🚪
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-7xl mx-auto mt-4 px-4 flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+    <div class="flex items-center gap-2">
+      <label class="text-sm font-semibold text-slate-600">Fecha:</label>
+      <button onclick="cambiarDia(-1)" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-sm" title="Día Anterior">◀</button>
+      <input type="date" id="inputFechaAgenda" onchange="cargarAgenda()" class="px-3 py-1.5 border rounded-lg focus:ring-2 focus:ring-blue-500 font-medium">
+      <button onclick="cambiarDia(1)" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-3 py-1.5 rounded-lg text-sm" title="Día Siguiente">▶</button>
+      <button onclick="irHoy()" class="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-lg font-semibold ml-2">Hoy</button>
+      <span id="labelDiaSemana" class="ml-2 text-xs font-bold uppercase bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200">--</span>
+    </div>
+
+    <button onclick="abrirModalNuevaCita()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-xl shadow-md flex items-center justify-center gap-2">
+      <span>➕</span> Programar Cita
+    </button>
+  </div>
+
+  <div class="max-w-7xl mx-auto mt-4 px-4 mb-10 overflow-x-auto">
+    <div id="gridAgenda" class="bg-white rounded-xl shadow-md border border-slate-200 min-w-[900px] overflow-hidden relative">
+    </div>
+  </div>
+
+  <!-- Modal Unificado -->
+  <div id="modalCita" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
+      <h3 id="modalCitaTitle" class="text-xl font-bold mb-4 text-slate-800 border-b pb-2">➕ Programar Nueva Cita</h3>
+      
+      <form id="formCita" onsubmit="guardarCita(event)" class="space-y-4">
+        <!-- 1. Cliente -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+          <h4 class="text-xs font-bold uppercase text-slate-500">1. Identificación del Cliente</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Teléfono (Búsqueda Exacta) *</label>
+              <input type="text" id="citaTelefono" required onblur="buscarClientePorTelefono()" placeholder="Ej. 987654321" class="w-full px-3 py-2 border rounded-lg">
+              <span id="labelEstadoCliente" class="text-[11px] font-semibold mt-1 block"></span>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Nombre Completo *</label>
+              <input type="text" id="citaNombreCliente" required placeholder="Nombre y Apellido" class="w-full px-3 py-2 border rounded-lg">
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Canal y Depósito -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+          <h4 class="text-xs font-bold uppercase text-slate-500">2. Canal y Estado de Cita</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Canal *</label>
+              <select id="citaCanal" onchange="evaluarReglasCanal()" required class="w-full px-3 py-2 border rounded-lg">
+                <option value="TELEFONO">Teléfono</option>
+                <option value="WHATSAPP">WhatsApp</option>
+                <option value="PRESENCIAL">Presencial</option>
+                <option value="INSTAGRAM">Instagram</option>
+                <option value="FACEBOOK">Facebook</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Estado</label>
+              <select id="citaEstado" class="w-full px-3 py-2 border rounded-lg">
+                <option value="PENDIENTE">PENDIENTE</option>
+                <option value="CONFIRMADA">CONFIRMADA</option>
+                <option value="ATENDIDA">ATENDIDA</option>
+                <option value="CANCELADA">CANCELADA</option>
+                <option value="ANULADA_TARDANZA">ANULADA_TARDANZA</option>
+                <option value="NO_ASISTIO">NO_ASISTIO</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Depósito (S/)</label>
+              <input type="number" id="citaDepositoMonto" value="0" class="w-full px-3 py-2 border rounded-lg bg-slate-100" readonly>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Estado Depósito</label>
+              <select id="citaDepositoEstado" class="w-full px-3 py-2 border rounded-lg">
+                <option value="NO_CORRESPONDE">No Corresponde</option>
+                <option value="PENDIENTE">Pendiente</option>
+                <option value="RECIBIDO">Recibido</option>
+                <option value="DEVUELTO">Devuelto</option>
+                <option value="PERDIDO">Perdido</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Observaciones</label>
+            <input type="text" id="citaObservaciones" placeholder="Detalle adicional..." class="w-full px-3 py-2 border rounded-lg">
+          </div>
+        </div>
+
+        <!-- 3. Detalle de Servicios -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+          <div class="flex justify-between items-center">
+            <h4 class="text-xs font-bold uppercase text-slate-500">3. Servicios Solicitados (DETALLE_CITA - Incluye Hora Real de Término)</h4>
+            <button type="button" onclick="agregarFilaServicio()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg font-semibold">
+              ➕ Adicionar Servicio
+            </button>
+          </div>
+          
+          <div id="contenedorServicios" class="space-y-3"></div>
+        </div>
+
+        <!-- Acciones y WhatsApp -->
+        <div class="flex flex-col sm:flex-row justify-between items-center border-t pt-4 gap-3">
+          <div class="flex gap-2 w-full sm:w-auto">
+            <button type="button" id="btnEliminarCita" onclick="eliminarCitaActual()" class="hidden px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow text-sm">Eliminar Cita</button>
+            <button type="button" id="btnEnviarWhatsapp" onclick="enviarConfirmacionWhatsapp()" class="hidden px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow text-sm flex items-center gap-1.5">
+              <span>📱</span> Enviar WhatsApp
+            </button>
+          </div>
+          <div class="flex gap-3 ml-auto w-full sm:w-auto justify-end">
+            <button type="button" onclick="cerrarModalCita()" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
+            <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow">Guardar Cambios</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://sdrbgwhivwxrmuytrcog.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkcmJnd2hpdnd4cm11eXRyY29nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NTUyNzcsImV4cCI6MjEwNzEzMTI3N30.vsFieR-6tyMgx_fpZhO7RSjA3Z3BzJzR91Xp4rDnObU";
+    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let listaServicios = [];
+    let listaPersonalTotal = [];
+    let horariosRegistrados = [];
+    let configNegocio = {};
+    let prefijoPais = "51";
+    let idClienteEncontrado = null;
+    let citaEnEdicionId = null;
+    let citaActualSeleccionada = null;
+
+    function obtenerColorUnicoCita(idCita) {
+      if (!idCita) return '#1e293b';
+      let hash = 0;
+      for (let i = 0; i < idCita.length; i++) {
+        hash = idCita.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const paletaContrastada = [
+        '#1d4ed8', '#0284c7', '#0d9488', '#16a34a', '#ca8a04', 
+        '#ea580c', '#dc2626', '#db2777', '#9333ea', '#4f46e5', 
+        '#0891b2', '#059669', '#65a30d', '#d97706', '#c2410c', 
+        '#b91c1c', '#be185d', '#7e22ce', '#4338ca', '#374151'
+      ];
+      return paletaContrastada[Math.abs(hash) % paletaContrastada.length];
+    }
+
+    async function protegerRuta() {
+      const { data: { session } } = await _supabase.auth.getSession();
+      if (!session) window.location.href = "login.html";
+      else document.getElementById('userEmail').innerText = session.user.email;
+    }
+    protegerRuta();
+
+    async function cerrarSesion() {
+      await _supabase.auth.signOut();
+      window.location.href = "login.html";
+    }
+
+    async function cargarConfiguracion() {
+      const { data } = await _supabase.from('configuracion').select('*');
+      if (data) {
+        data.forEach(item => {
+          configNegocio[item.parametro] = item.valor;
+        });
+        if (configNegocio['PREFIJO_PAIS']) {
+          prefijoPais = configNegocio['PREFIJO_PAIS'].trim();
+        }
+      }
+    }
+
+    function irHoy() {
+      document.getElementById('inputFechaAgenda').value = new Date().toISOString().split('T')[0];
+      cargarAgenda();
+    }
+
+    function cambiarDia(dias) {
+      const inputFecha = document.getElementById('inputFechaAgenda');
+      if (!inputFecha.value) return;
+      const partes = inputFecha.value.split('-');
+      const fechaObj = new Date(partes[0], partes[1] - 1, partes[2]);
+      fechaObj.setDate(fechaObj.getDate() + dias);
+      
+      const anio = fechaObj.getFullYear();
+      const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
+      const dia = String(fechaObj.getDate()).padStart(2, '0');
+      
+      inputFecha.value = `${anio}-${mes}-${dia}`;
+      cargarAgenda();
+    }
+
+    async function cargarCatalogos() {
+      await cargarConfiguracion();
+      const { data: servs } = await _supabase.from('servicios').select('*').eq('activo', true);
+      const { data: pers } = await _supabase.from('personal').select('*').eq('activo', true).eq('tipo_personal', 'ATENCION_CLIENTE');
+      const { data: hors } = await _supabase.from('horarios').select('*');
+      
+      listaServicios = servs || [];
+      listaPersonalTotal = pers || [];
+      horariosRegistrados = hors || [];
+    }
+
+    function obtenerDiaSemana(fechaStr) {
+      const dias = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
+      const partes = fechaStr.split('-');
+      const fechaObj = new Date(partes[0], partes[1] - 1, partes[2]);
+      return dias[fechaObj.getDay()];
+    }
+
+    async function cambiarEstadoHorarioExcepcional(idProfesional, diaSemana, estadoActual) {
+      const nuevoEstado = estadoActual === 'DESCANSA' ? 'TRABAJA' : 'DESCANSA';
+      const mensajeAccion = nuevoEstado === 'TRABAJA' 
+        ? `¿Desea cambiar el turno de ${idProfesional} a TRABAJA (laborable excepcional) para este día?`
+        : `¿Desea cambiar el turno de ${idProfesional} a DESCANSA para este día?`;
+
+      if (!confirm(mensajeAccion)) return;
+
+      const horarioExistente = horariosRegistrados.find(h => h.id_profesional === idProfesional && h.dia_semana === diaSemana);
+
+      if (horarioExistente) {
+        const { error } = await _supabase
+          .from('horarios')
+          .update({ estado: nuevoEstado })
+          .eq('id_profesional', idProfesional)
+          .eq('dia_semana', diaSemana);
+
+        if (error) { alert("Error al actualizar el horario: " + error.message); return; }
+        horarioExistente.estado = nuevoEstado;
+      } else {
+        const { error } = await _supabase
+          .from('horarios')
+          .insert([{ id_profesional: idProfesional, dia_semana: diaSemana, estado: nuevoEstado }]);
+
+        if (error) { alert("Error al registrar el nuevo horario: " + error.message); return; }
+        horariosRegistrados.push({ id_profesional: idProfesional, dia_semana: diaSemana, estado: nuevoEstado });
+      }
+
+      cargarAgenda();
+    }
+
+    async function cargarAgenda() {
+      const fechaSel = document.getElementById('inputFechaAgenda').value;
+      if (!fechaSel) return;
+
+      document.getElementById('labelFechaActual').innerText = fechaSel;
+      const diaSemanaActual = obtenerDiaSemana(fechaSel);
+      document.getElementById('labelDiaSemana').innerText = diaSemanaActual;
+
+      const grid = document.getElementById('gridAgenda');
+      grid.innerHTML = '<p class="p-8 text-center text-slate-500">Cargando agenda...</p>';
+
+      const { data: citas, error } = await _supabase
+        .from('citas')
+        .select(`
+          id_cita, fecha, hora_inicio, hora_fin_programada, estado, canal, deposito_monto, deposito_estado, observaciones,
+          clientes (id_cliente, nombre, apellido, telefono),
+          detalle_cita (id_detalle, id_servicio, id_profesional, hora_inicio, hora_fin, tiempo_reservado, servicios(nombre_servicio))
+        `)
+        .eq('fecha', fechaSel);
+
+      if (error) {
+        grid.innerHTML = `<p class="p-8 text-center text-red-500">Error al cargar citas: ${error.message}</p>`;
+        return;
+      }
+
+      let html = `<div class="grid grid-cols-${listaPersonalTotal.length + 1} border-b border-slate-200 bg-slate-50 font-bold text-xs uppercase text-slate-600">`;
+      html += `<div class="p-3 text-center border-r">Horario</div>`;
+      
+      listaPersonalTotal.forEach(p => {
+        const horarioProf = horariosRegistrados.find(h => h.id_profesional === p.id_profesional && h.dia_semana === diaSemanaActual);
+        const estadoTurno = horarioProf ? horarioProf.estado : 'TRABAJA';
+        const estaDescansando = estadoTurno === 'DESCANSA';
+
+        if (estaDescansando) {
+          html += `
+            <div onclick="cambiarEstadoHorarioExcepcional('${p.id_profesional}', '${diaSemanaActual}', 'DESCANSA')" class="p-3 text-center border-r bg-slate-200 text-slate-400 opacity-85 cursor-pointer hover:bg-slate-300 transition" title="Clic para cambiar a TRABAJA">
+              ${p.nombre}<br><span class="text-[9px] font-bold text-red-600 uppercase underline">🛌 Descanso (Cambiar)</span>
+            </div>`;
+        } else {
+          html += `
+            <div onclick="cambiarEstadoHorarioExcepcional('${p.id_profesional}', '${diaSemanaActual}', 'TRABAJA')" class="p-3 text-center border-r bg-emerald-50 text-emerald-900 cursor-pointer hover:bg-emerald-100 transition" title="Clic para cambiar a DESCANSA">
+              ${p.nombre}<br><span class="text-[9px] font-bold text-emerald-600 uppercase underline">🟢 Labora (Cambiar)</span>
+            </div>`;
+        }
+      });
+      html += `</div>`;
+
+      for (let h = 10; h < 20; h++) {
+        for (let m of [0, 30]) {
+          const horaStr = `${h < 10 ? '0' + h : h}:${m === 0 ? '00' : '30'}`;
+          html += `<div class="grid grid-cols-${listaPersonalTotal.length + 1} border-b border-slate-100 min-h-[50px] text-xs">`;
+          html += `<div class="p-2 font-bold text-slate-400 bg-slate-50 border-r flex items-center justify-center">${horaStr}</div>`;
+
+          listaPersonalTotal.forEach(p => {
+            const horarioProf = horariosRegistrados.find(h => h.id_profesional === p.id_profesional && h.dia_semana === diaSemanaActual);
+            const estadoTurno = horarioProf ? horarioProf.estado : 'TRABAJA';
+            const estaDescansando = estadoTurno === 'DESCANSA';
+
+            const citasProf = [];
+            (citas || []).forEach(c => {
+              if (c.detalle_cita) {
+                c.detalle_cita.forEach(det => {
+                  if (det.id_profesional === p.id_profesional && det.hora_inicio && det.hora_inicio.substring(0, 5) === horaStr) {
+                    citasProf.push({ cita: c, detalle: det });
+                  }
+                });
+              }
+            });
+
+            let celdaContent = '';
+            citasProf.forEach(item => {
+              const c = item.cita;
+              const det = item.detalle;
+              const colorEstado = {
+                'PENDIENTE': 'bg-amber-50 text-amber-900',
+                'CONFIRMADA': 'bg-blue-50 text-blue-900',
+                'ATENDIDA': 'bg-slate-100 text-slate-800',
+                'CANCELADA': 'bg-red-50 text-red-700 opacity-60'
+              }[c.estado] || 'bg-slate-50';
+
+              const nomCliente = c.clientes ? `${c.clientes.nombre}` : 'Cliente';
+              const telCliente = c.clientes ? c.clientes.telefono : '';
+              const nombreServicio = det.servicios ? det.servicios.nombre_servicio : 'Servicio';
+              const colorBordeUnico = obtenerColorUnicoCita(c.id_cita);
+
+              const citaJson = encodeURIComponent(JSON.stringify(c));
+              
+              celdaContent += `
+                <div onclick='event.stopPropagation(); abrirModalModificarCita(JSON.parse(decodeURIComponent("${citaJson}")))' style="border-left-color: ${colorBordeUnico};" class="p-1.5 mb-1 rounded border-l-4 shadow-sm cursor-pointer hover:ring-2 hover:ring-blue-400 transition ${colorEstado}">
+                  <div class="font-bold flex justify-between items-center">
+                    <span>${det.hora_inicio.substring(0,5)} - ${nomCliente}</span>
+                  </div>
+                  <div class="text-[11px] font-semibold text-slate-700 mt-0.5">💅 ${nombreServicio}</div>
+                  <div class="text-[10px] text-slate-500 flex justify-between mt-1">
+                    <span>📞 ${telCliente}</span>
+                  </div>
+                </div>
+              `;
+            });
+
+            if (estaDescansando) {
+              html += `<div class="p-1 border-r bg-slate-100/60 cursor-not-allowed relative">${celdaContent}<div class="absolute inset-0 flex items-center justify-center pointer-events-none"><span class="text-[10px] font-bold text-slate-300 uppercase tracking-widest rotate-[-15deg]">Descanso</span></div></div>`;
+            } else {
+              html += `<div class="p-1 border-r hover:bg-slate-50 transition cursor-pointer" onclick="abrirModalNuevaCita('${horaStr}', '${p.id_profesional}')">${celdaContent}</div>`;
+            }
+          });
+
+          html += `</div>`;
+        }
+      }
+
+      grid.innerHTML = html;
+      verificarYMostrarLineaHoraActual();
+    }
+
+    function verificarYMostrarLineaHoraActual() {
+      const fechaSel = document.getElementById('inputFechaAgenda').value;
+      const ahoraMadrid = new Date();
+      const horaPeru = new Date(ahoraMadrid.getTime() - (7 * 60 * 60 * 1000));
+      const hoyPeruStr = horaPeru.toISOString().split('T')[0];
+
+      if (fechaSel !== hoyPeruStr) return;
+
+      const horas = horaPeru.getHours();
+      const minutos = horaPeru.getMinutes();
+      if (horas < 10 || horas >= 20) return;
+
+      const minutosTotalesDesde10 = (horas - 10) * 60 + minutos;
+      const pixelesPorMinuto = 50 / 30;
+      const offsetTopPx = minutosTotalesDesde10 * pixelesPorMinuto + 35;
+
+      const grid = document.getElementById('gridAgenda');
+      const linea = document.createElement('div');
+      linea.className = "absolute left-0 right-0 z-20 flex items-center pointer-events-none";
+      linea.style.top = `${offsetTopPx}px`;
+      linea.innerHTML = `
+        <div class="bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">🕒 Hora Actual (${horas}:${minutos < 10 ? '0'+minutos : minutos})</div>
+        <div class="flex-1 border-t-2 border-red-600 shadow-sm"></div>
+      `;
+      grid.appendChild(linea);
+    }
+
+    function evaluarReglasCanal() {
+      const canal = document.getElementById('citaCanal').value;
+      const depositoMonto = document.getElementById('citaDepositoMonto');
+      const depositoEstado = document.getElementById('citaDepositoEstado');
+
+      if (canal === 'WHATSAPP') {
+        depositoMonto.value = 30;
+        depositoEstado.value = 'PENDIENTE';
+      } else {
+        depositoMonto.value = 0;
+        depositoEstado.value = 'NO_CORRESPONDE';
+      }
+    }
+
+    async function buscarClientePorTelefono() {
+      let telInput = document.getElementById('citaTelefono').value.trim();
+      const lblEstado = document.getElementById('labelEstadoCliente');
+      if (!telInput) {
+        lblEstado.innerText = "";
+        return;
+      }
+
+      let telefonoFinal = telInput;
+      if (!telInput.startsWith(prefijoPais) && telInput.length <= 9) {
+        telefonoFinal = prefijoPais + telInput;
+      }
+
+      const { data } = await _supabase.from('clientes').select('*').eq('telefono', telefonoFinal).maybeSingle();
+      
+      if (data) {
+        document.getElementById('citaNombreCliente').value = `${data.nombre} ${data.apellido || ''}`.trim();
+        idClienteEncontrado = data.id_cliente;
+        lblEstado.className = "text-[11px] font-semibold mt-1 block text-emerald-600";
+        lblEstado.innerText = "✓ Cliente existente encontrado";
+      } else {
+        idClienteEncontrado = null;
+        lblEstado.className = "text-[11px] font-semibold mt-1 block text-amber-600";
+        lblEstado.innerText = "ℹ️ Cliente nuevo (se registrará al guardar)";
+        document.getElementById('citaTelefono').value = telefonoFinal;
+      }
+    }
+
+    function agregarFilaServicio(datos = {}) {
+      const container = document.getElementById('contenedorServicios');
+
+      let opcionesServ = `<option value="" disabled ${!datos.id_servicio ? 'selected' : ''}>-- Seleccione un servicio --</option>`;
+      opcionesServ += listaServicios.map(s => 
+        `<option value="${s.id_servicio}" data-tiempo="${s.tiempo_estimado}" data-nombre="${s.nombre_servicio}" ${datos.id_servicio === s.id_servicio ? 'selected' : ''}>${s.nombre_servicio}</option>`
+      ).join('');
+
+      const opcionesPers = listaPersonalTotal.map(p => 
+        `<option value="${p.id_profesional}" ${datos.id_profesional === p.id_profesional ? 'selected' : ''}>${p.nombre} ${p.apellido || ''}</option>`
+      ).join('');
+
+      let horaIniVal = datos.hora_inicio ? datos.hora_inicio.substring(0,5) : '10:00';
+      let horaFinVal = datos.hora_fin ? datos.hora_fin.substring(0,5) : '';
+      if (!horaFinVal && horaIniVal) {
+        const [hh, mm] = horaIniVal.split(':').map(Number);
+        const tDef = parseInt(datos.tiempo_reservado) || 30;
+        const totalMin = hh * 60 + mm + tDef;
+        horaFinVal = `${Math.floor(totalMin/60).toString().padStart(2,'0')}:${(totalMin%60).toString().padStart(2,'0')}`;
+      }
+
+      const div = document.createElement('div');
+      div.className = "flex flex-col sm:flex-row gap-2 items-center bg-white p-3 rounded-lg border border-slate-200 shadow-sm fila-servicio";
+      div.innerHTML = `
+        <div class="flex-1 w-full">
+          <label class="block text-[10px] uppercase font-semibold text-slate-500">Servicio</label>
+          <select name="id_servicio" onchange="cambiarServicioFila(this)" class="w-full border p-1.5 rounded text-sm">${opcionesServ}</select>
+        </div>
+        <div class="flex-1 w-full">
+          <label class="block text-[10px] uppercase font-semibold text-slate-500">Profesional</label>
+          <select name="id_profesional" class="w-full border p-1.5 rounded text-sm">${opcionesPers}</select>
+        </div>
+        <div class="w-full sm:w-24">
+          <label class="block text-[10px] uppercase font-semibold text-slate-500">H. Inicio</label>
+          <input type="time" name="hora_inicio" onchange="actualizarHoraFinAutomatica(this)" value="${horaIniVal}" class="w-full border p-1.5 rounded text-sm">
+        </div>
+        <div class="w-full sm:w-24">
+          <label class="block text-[10px] uppercase font-semibold text-slate-500">H. Fin (Real)</label>
+          <input type="time" name="hora_fin" value="${horaFinVal}" class="w-full border p-1.5 rounded text-sm bg-blue-50 font-bold text-blue-900" title="Hora de término real ajustada por la recepcionista">
+        </div>
+        <div class="w-full sm:w-20 hidden">
+          <input type="number" name="tiempo_reservado" value="${datos.tiempo_reservado || 30}">
+        </div>
+        <button type="button" onclick="confirmarYEliminarFila(this)" class="text-red-500 hover:text-red-700 font-bold px-2 py-1 mt-4" title="Eliminar servicio">🗑️</button>
+      `;
+      container.appendChild(div);
+    }
+
+    function confirmarYEliminarFila(btnEl) {
+      if (confirm("¿Está seguro de eliminar este servicio de la cita?")) {
+        btnEl.parentElement.remove();
+      }
+    }
+
+    function cambiarServicioFila(selectEl) {
+      const opt = selectEl.options[selectEl.selectedIndex];
+      const tiempo = parseInt(opt.getAttribute('data-tiempo')) || 30;
+      const fila = selectEl.closest('.fila-servicio');
+      const inputInicio = fila.querySelector('input[name="hora_inicio"]');
+      const inputFin = fila.querySelector('input[name="hora_fin"]');
+      const inputTiempo = fila.querySelector('input[name="tiempo_reservado"]');
+
+      if (inputTiempo) inputTiempo.value = tiempo;
+
+      if (inputInicio && inputInicio.value) {
+        const [hh, mm] = inputInicio.value.split(':').map(Number);
+        const totalMin = hh * 60 + mm + tiempo;
+        inputFin.value = `${Math.floor(totalMin/60).toString().padStart(2,'0')}:${(totalMin%60).toString().padStart(2,'0')}`;
+      }
+    }
+
+    function actualizarHoraFinAutomatica(inputInicioEl) {
+      const fila = inputInicioEl.closest('.fila-servicio');
+      const inputFin = fila.querySelector('input[name="hora_fin"]');
+      const inputTiempo = fila.querySelector('input[name="tiempo_reservado"]');
+      const tiempo = parseInt(inputTiempo.value) || 30;
+
+      if (inputInicioEl.value) {
+        const [hh, mm] = inputInicioEl.value.split(':').map(Number);
+        const totalMin = hh * 60 + mm + tiempo;
+        inputFin.value = `${Math.floor(totalMin/60).toString().padStart(2,'0')}:${(totalMin%60).toString().padStart(2,'0')}`;
+      }
+    }
+
+    function abrirModalNuevaCita(hora = '10:00', idProf = '') {
+      citaEnEdicionId = null;
+      citaActualSeleccionada = null;
+      document.getElementById('modalCitaTitle').innerText = "➕ Programar Nueva Cita";
+      document.getElementById('btnEliminarCita').classList.add('hidden');
+      document.getElementById('btnEnviarWhatsapp').classList.add('hidden');
+
+      document.getElementById('citaTelefono').value = '';
+      document.getElementById('citaNombreCliente').value = '';
+      document.getElementById('labelEstadoCliente').innerText = '';
+      document.getElementById('citaCanal').value = 'TELEFONO';
+      document.getElementById('citaEstado').value = 'PENDIENTE';
+      document.getElementById('citaObservaciones').value = '';
+      idClienteEncontrado = null;
+
+      evaluarReglasCanal();
+      document.getElementById('contenedorServicios').innerHTML = '';
+      
+      agregarFilaServicio({ hora_inicio: hora, id_profesional: idProf });
+      document.getElementById('modalCita').classList.remove('hidden');
+    }
+
+    function abrirModalModificarCita(cita) {
+      citaEnEdicionId = cita.id_cita;
+      citaActualSeleccionada = cita;
+      document.getElementById('modalCitaTitle').innerText = `✏️ Modificar Cita (${cita.id_cita.substring(0,8)})`;
+      document.getElementById('btnEliminarCita').classList.remove('hidden');
+      document.getElementById('btnEnviarWhatsapp').classList.remove('hidden');
+
+      if (cita.clientes) {
+        document.getElementById('citaTelefono').value = cita.clientes.telefono || '';
+        document.getElementById('citaNombreCliente').value = `${cita.clientes.nombre} ${cita.clientes.apellido || ''}`.trim();
+        idClienteEncontrado = cita.clientes.id_cliente;
+        document.getElementById('labelEstadoCliente').className = "text-[11px] font-semibold mt-1 block text-emerald-600";
+        document.getElementById('labelEstadoCliente').innerText = "✓ Cliente cargado";
+      }
+
+      document.getElementById('citaCanal').value = cita.canal || 'TELEFONO';
+      document.getElementById('citaEstado').value = cita.estado || 'PENDIENTE';
+      document.getElementById('citaDepositoMonto').value = cita.deposito_monto || 0;
+      document.getElementById('citaDepositoEstado').value = cita.deposito_estado || 'NO_CORRESPONDE';
+      document.getElementById('citaObservaciones').value = cita.observaciones || '';
+
+      document.getElementById('contenedorServicios').innerHTML = '';
+      if (cita.detalle_cita && cita.detalle_cita.length > 0) {
+        cita.detalle_cita.forEach(det => agregarFilaServicio(det));
+      } else {
+        agregarFilaServicio();
+      }
+
+      document.getElementById('modalCita').classList.remove('hidden');
+    }
+
+    function cerrarModalCita() {
+      document.getElementById('modalCita').classList.add('hidden');
+    }
+
+    function enviarConfirmacionWhatsapp() {
+      const telCliente = document.getElementById('citaTelefono').value.trim();
+      const nombreCliente = document.getElementById('citaNombreCliente').value.trim() || "Estimada cliente";
+      if (!telCliente) {
+        alert("Falta el número de teléfono del cliente para enviar el WhatsApp.");
+        return;
+      }
+
+      const fechaInput = document.getElementById('inputFechaAgenda').value;
+      const [anio, mes, dia] = fechaInput.split('-');
+      const fechaFormateada = `${dia}/${mes}/${anio}`;
+
+      const filas = document.querySelectorAll('.fila-servicio');
+      let nombresServicios = [];
+
+      filas.forEach(f => {
+        const selectServ = f.querySelector('select[name="id_servicio"]');
+        if (selectServ && selectServ.selectedIndex > 0) {
+          nombresServicios.push(selectServ.options[selectServ.selectedIndex].text.toUpperCase());
+        }
+      });
+
+      if (nombresServicios.length === 0 && citaActualSeleccionada && citaActualSeleccionada.detalle_cita) {
+        citaActualSeleccionada.detalle_cita.forEach(det => {
+          if (det.servicios && det.servicios.nombre_servicio) {
+            nombresServicios.push(det.servicios.nombre_servicio.toUpperCase());
+          }
+        });
+      }
+
+      if (nombresServicios.length === 0) {
+        nombresServicios = ["SERVICIO GENERAL"];
+      }
+
+      const primeraFila = document.querySelector('.fila-servicio');
+      const horaServicio = primeraFila ? primeraFila.querySelector('input[name="hora_inicio"]').value : (citaActualSeleccionada ? citaActualSeleccionada.hora_inicio.substring(0,5) : "10:00");
+
+      const texto1 = configNegocio['TEXTO1'] || "Listo quedó agendada";
+      const texto2 = configNegocio['TEXTO2'] || "Por favor, venir puntual para no perder turno ni adelanto ( max. 10 min.)";
+      const negocio = configNegocio['NOMBRE_NEGOCIO'] || "Tienda 114";
+      const direccion = "Av. Caminos del Inca 257 - 269, Chacarilla - Santiago de Surco";
+      const referencia = "Centro Comercial Caminos del Inca II Etapa";
+
+      let telefonoLimpio = telCliente.replace(/\D/g, '');
+      let telefonoFormateado = `+${telefonoLimpio}`;
+      if (telefonoLimpio.startsWith('51') && telefonoLimpio.length === 11) {
+        const codigo = telefonoLimpio.substring(0, 2);
+        const parte1 = telefonoLimpio.substring(2, 5);
+        const parte2 = telefonoLimpio.substring(5, 8);
+        const parte3 = telefonoLimpio.substring(8, 11);
+        telefonoFormateado = `+${codigo} - ${parte1} ${parte2} ${parte3}`;
+      } else if (telefonoLimpio.length === 9) {
+        const parte1 = telefonoLimpio.substring(0, 3);
+        const parte2 = telefonoLimpio.substring(3, 6);
+        const parte3 = telefonoLimpio.substring(6, 9);
+        telefonoFormateado = `+51 - ${parte1} ${parte2} ${parte3}`;
+      }
+
+      let mensaje = `${texto1}\n\n`;
+      mensaje += `${nombreCliente}\n`;
+      mensaje += `${negocio}\n`;
+      mensaje += `${direccion}\n`;
+      mensaje += `${referencia}\n`;
+      
+      mensaje += `\nHora : ${horaServicio}\n`;
+      mensaje += `La Fecha Prevista para el Servicio\n${fechaFormateada}\n`;
+      
+      mensaje += `\nServicio${nombresServicios.length > 1 ? 's' : ''}:\n`;
+      nombresServicios.forEach(s => {
+        mensaje += `- ${s}\n`;
+      });
+
+      mensaje += `\nTelefono : ${telefonoFormateado}\n`;
+      mensaje += `\n${texto2}\n`;
+      mensaje += `\n! La esperamos !`;
+
+      const urlWhatsapp = `https://wa.me/${telefonoLimpio}?text=${encodeURIComponent(mensaje)}`;
+      window.open(urlWhatsapp, '_blank');
+    }
+
+    async function guardarCita(e) {
+      e.preventDefault();
+      const fecha = document.getElementById('inputFechaAgenda').value;
+      let tel = document.getElementById('citaTelefono').value.trim();
+      const nom = document.getElementById('citaNombreCliente').value.trim();
+      const canal = document.getElementById('citaCanal').value;
+      const estado = document.getElementById('citaEstado').value;
+      const depMonto = parseFloat(document.getElementById('citaDepositoMonto').value) || 0;
+      const depEstado = document.getElementById('citaDepositoEstado').value;
+      const observaciones = document.getElementById('citaObservaciones').value;
+
+      if (!tel.startsWith(prefijoPais) && tel.length <= 9) {
+        tel = prefijoPais + tel;
+      }
+
+      const filas = document.querySelectorAll('.fila-servicio');
+      if (filas.length === 0) {
+        alert("Debe agregar al menos un servicio a la cita.");
+        return;
+      }
+
+      let detallesCitaPayload = [];
+      let minHoraInicio = "23:59";
+      let maxHoraFin = "00:00";
+
+      for (let f of filas) {
+        const idServicio = f.querySelector('select[name="id_servicio"]').value;
+        if (!idServicio) {
+          alert("Por favor seleccione un servicio válido en todas las filas.");
+          return;
+        }
+        const idProfesional = f.querySelector('select[name="id_profesional"]').value;
+        const hInicio = f.querySelector('input[name="hora_inicio"]').value;
+        const hFinInput = f.querySelector('input[name="hora_fin"]').value;
+        const tRes = parseInt(f.querySelector('input[name="tiempo_reservado"]').value) || 30;
+
+        const hFinStr = hFinInput ? (hFinInput.length === 5 ? hFinInput + ':00' : hFinInput) : (hInicio + ':00');
+
+        if (hInicio < minHoraInicio) minHoraInicio = hInicio + ':00';
+        if (hFinStr > maxHoraFin) maxHoraFin = hFinStr;
+
+        const servObj = listaServicios.find(s => s.id_servicio === idServicio);
+
+        const [hhI, mmI] = hInicio.split(':').map(Number);
+        const [hhF, mmF] = hFinInput.split(':').map(Number);
+        const minutosReales = Math.max(5, (hhF * 60 + mmF) - (hhI * 60 + mmI));
+
+        detallesCitaPayload.push({
+          id_servicio: idServicio,
+          id_profesional: idProfesional,
+          tiempo_estimado: servObj ? servObj.tiempo_estimado : tRes,
+          tiempo_reservado: minutosReales,
+          hora_inicio: hInicio + ':00',
+          hora_fin: hFinStr
+        });
+      }
+
+      const ahoraMadrid = new Date();
+      const horaPeru = new Date(ahoraMadrid.getTime() - (7 * 60 * 60 * 1000));
+      const hoyPeruStr = horaPeru.toISOString().split('T')[0];
+      const horaActualPeru = horaPeru.getHours();
+
+      if (!citaEnEdicionId && fecha === hoyPeruStr && horaActualPeru >= 16) {
+        alert(`Regla de Negocio: Son las ${horaActualPeru}:00 hrs en Perú. Las citas para el mismo día solo se aceptan hasta las 4:00 PM.`);
+        return;
+      }
+
+      let idCliente = idClienteEncontrado;
+      if (!idCliente) {
+        const { data: clienteExistente } = await _supabase.from('clientes').select('*').eq('telefono', tel).maybeSingle();
+        if (clienteExistente) {
+          idCliente = clienteExistente.id_cliente;
+        } else {
+          const idNuevoCliente = 'CLI-' + Date.now();
+          const { error: errCli } = await _supabase.from('clientes').insert([{
+            id_cliente: idNuevoCliente,
+            nombre: nom,
+            telefono: tel,
+            activo: true
+          }]);
+          if (errCli) { alert("Error al registrar cliente: " + errCli.message); return; }
+          idCliente = idNuevoCliente;
+        }
+      }
+
+      if (citaEnEdicionId) {
+        const { error: errUpd } = await _supabase.from('citas').update({
+          id_cliente: idCliente,
+          fecha: fecha,
+          hora_inicio: minHoraInicio,
+          hora_fin_programada: maxHoraFin,
+          canal: canal,
+          estado: estado,
+          deposito_monto: depMonto,
+          deposito_estado: depEstado,
+          observaciones: observaciones
+        }).eq('id_cita', citaEnEdicionId);
+
+        if (errUpd) { alert("Error al actualizar cita: " + errUpd.message); return; }
+
+        await _supabase.from('detalle_cita').delete().eq('id_cita', citaEnEdicionId);
+        const detallesConId = detallesCitaPayload.map(d => ({ ...d, id_cita: citaEnEdicionId }));
+        const { error: errDet } = await _supabase.from('detalle_cita').insert(detallesConId);
+        if (errDet) { alert("Error al actualizar detalles: " + errDet.message); return; }
+
+      } else {
+        const { data: nuevaCita, error: errCita } = await _supabase.from('citas').insert([{
+          id_cliente: idCliente,
+          fecha: fecha,
+          hora_inicio: minHoraInicio,
+          hora_fin_programada: maxHoraFin,
+          canal: canal,
+          estado: estado,
+          deposito_monto: depMonto,
+          deposito_estado: depEstado,
+          observaciones: observaciones
+        }]).select().single();
+
+        if (errCita) { alert("Error al guardar la cita: " + errCita.message); return; }
+
+        const detallesConId = detallesCitaPayload.map(d => ({ ...d, id_cita: nuevaCita.id_cita }));
+        const { error: errDet } = await _supabase.from('detalle_cita').insert(detallesConId);
+        if (errDet) { alert("Error al registrar detalle: " + errDet.message); return; }
+      }
+
+      cerrarModalCita();
+      cargarAgenda();
+    }
+
+    async function eliminarCitaActual() {
+      if (!citaEnEdicionId) return;
+      if (!confirm("¿Está plenamente seguro de eliminar esta cita de forma permanente?")) return;
+
+      await _supabase.from('detalle_cita').delete().eq('id_cita', citaEnEdicionId);
+      const { error } = await _supabase.from('citas').delete().eq('id_cita', citaEnEdicionId);
+
+      if (error) {
+        alert("Error al eliminar: " + error.message);
+      } else {
+        cerrarModalCita();
+        cargarAgenda();
+      }
+    }
+
+    cargarCatalogos().then(() => irHoy());
+  </script>
+</body>
+</html>
