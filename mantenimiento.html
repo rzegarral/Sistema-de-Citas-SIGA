@@ -279,7 +279,6 @@
             const nombreServ = det.servicios ? det.servicios.nombre_servicio : 'General';
             const precioServ = det.servicios && det.servicios.precio ? parseFloat(det.servicios.precio) : 0;
             
-            // Cálculo basado estrictamente en la diferencia real entre hora_inicio y hora_fin
             let minutosServicio = 30;
             if (det.hora_inicio && det.hora_fin) {
               const [hIni, mIni] = det.hora_inicio.substring(0,5).split(':').map(Number);
@@ -373,12 +372,22 @@
       const columnas = Object.keys(datosTabla[0]);
       let camposHtml = '';
       columnas.forEach(col => {
-        camposHtml += `
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col}</label>
-            <input type="text" name="${col}" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Ingrese ${col}...">
-          </div>
-        `;
+        // MEJORA: Si la columna es 'descripcion', usamos un textarea para mayor comodidad
+        if (col === 'descripcion') {
+          camposHtml += `
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col}</label>
+              <textarea name="${col}" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Ingrese ${col}..."></textarea>
+            </div>
+          `;
+        } else {
+          camposHtml += `
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col}</label>
+              <input type="text" name="${col}" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Ingrese ${col}...">
+            </div>
+          `;
+        }
       });
       document.getElementById('modalCampos').innerHTML = camposHtml;
       document.getElementById('modalMantenimiento').classList.remove('hidden');
@@ -395,12 +404,22 @@
         const valorActual = row[col] !== null && row[col] !== undefined ? row[col] : '';
         const esClavePrincipal = col === 'id_horario' || col === 'id_servicio' || col === 'id_profesional' || col === 'id_cliente' || col === 'parametro';
         
-        camposHtml += `
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col} ${esClavePrincipal ? '(ID)' : ''}</label>
-            <input type="text" name="${col}" value="${valorActual}" class="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50">
-          </div>
-        `;
+        // MEJORA: Si la columna es 'descripcion', usamos un textarea al editar
+        if (col === 'descripcion') {
+          camposHtml += `
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col} ${esClavePrincipal ? '(ID)' : ''}</label>
+              <textarea name="${col}" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50">${valorActual}</textarea>
+            </div>
+          `;
+        } else {
+          camposHtml += `
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col} ${esClavePrincipal ? '(ID)' : ''}</label>
+              <input type="text" name="${col}" value="${valorActual}" class="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50">
+            </div>
+          `;
+        }
       });
       document.getElementById('modalCampos').innerHTML = camposHtml;
       document.getElementById('modalMantenimiento').classList.remove('hidden');
