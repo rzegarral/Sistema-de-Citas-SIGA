@@ -132,11 +132,11 @@
 
         // Configuración de llaves primarias y campos por defecto para ordenamiento
         const configTablas = {
-            servicios: { pk: 'id_servicio', ordenDefecto: 'nombre_servicio' },
-            clientes: { pk: 'id_cliente', ordenDefecto: 'nombre' },
-            personal: { pk: 'id_profesional', ordenDefecto: 'nombre' },
-            horarios: { pk: 'id_horario', ordenDefecto: 'dia' },
-            instrucciones: { pk: 'id_instruccion', ordenDefecto: 'titulo' }
+        servicios: { pk: 'id_servicio', ordenDefecto: 'nombre_servicio' },
+        clientes: { pk: 'id_cliente', ordenDefecto: 'nombre' },
+        personal: { pk: 'id_profesional', ordenDefecto: 'nombre' },
+        horarios: { pk: 'id', ordenDefecto: 'dia' }, // Cambiar 'id_horario' por 'id' si en Supabase se llama 'id'
+        instrucciones: { pk: 'id', ordenDefecto: 'titulo' }
         };
 
         async function verificarSesion() {
