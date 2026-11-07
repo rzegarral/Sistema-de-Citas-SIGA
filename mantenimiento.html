@@ -1,513 +1,360 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SIGA - Mantenimiento y Reportes</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <style>
-    @media print {
-      body {
-        font-size: 9px !important;
-        background: white !important;
-        color: black !important;
-      }
-      header, .no-print, button {
-        display: none !important;
-      }
-      .print-header {
-        display: block !important;
-        font-weight: bold;
-        text-transform: uppercase;
-        font-size: 11px;
-        margin-bottom: 10px;
-        border-bottom: 2px solid black;
-        padding-bottom: 4px;
-      }
-      table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-      }
-      th, td {
-        padding: 3px 5px !important;
-        font-size: 9px !important;
-        border: 1px solid #94a3b8 !important;
-      }
-      @page {
-        size: auto;
-        margin: 10mm;
-        @bottom-right {
-          content: "Página " counter(page) " de " counter(pages);
-          font-size: 8px;
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIGA - Mantenimiento y Reportes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        @media print {
+            body {
+                font-size: 9px !important;
+                background: white !important;
+                color: black !important;
+            }
+            header, .no-print, button {
+                display: none !important;
+            }
         }
-      }
-    }
-    .print-header { display: none; }
-  </style>
+    </style>
 </head>
-<body class="bg-slate-100 font-sans text-slate-800">
+<body class="bg-gray-100 min-h-screen text-gray-800">
 
-  <header class="bg-slate-900 text-white p-4 shadow-md flex justify-between items-center no-print">
-    <div class="flex items-center gap-3">
-      <h1 class="text-xl font-bold">⚙️ SIGA - Mantenimiento y Reportes</h1>
-    </div>
-    <div class="flex items-center gap-4">
-      <a href="agenda.html" class="text-sm bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg text-white font-medium">
-        📅 Ir a Agenda
-      </a>
-      <span id="userEmail" class="text-xs text-slate-400 font-mono hidden sm:inline">...</span>
-      <button onclick="cerrarSesion()" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium">
-        Salir 🚪
-      </button>
-    </div>
-  </header>
-
-  <div class="max-w-7xl mx-auto mt-6 px-4">
-    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 no-print">
-      <div class="flex items-center gap-3 w-full sm:w-auto">
-        <label class="text-sm font-semibold text-slate-600">Seleccionar Módulo:</label>
-        <select id="selectTabla" onchange="cambiarTabla()" class="px-3 py-2 border rounded-lg font-medium bg-slate-50 text-slate-700">
-          <option value="horarios">Horarios</option>
-          <option value="personal">Personal</option>
-          <option value="servicios">Servicios</option>
-          <option value="clientes">Clientes</option>
-          <option value="configuracion">Configuración</option>
-          <option value="reporte_produccion">📊 Reporte de Producción por Fechas</option>
-        </select>
-      </div>
-
-      <div id="contenedorBotonesAccion" class="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
-        <button onclick="exportarExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1.5 shadow-sm">
-          <span>📊</span> Exportar Excel (CSV)
-        </button>
-        <button onclick="imprimirReporte()" class="bg-slate-600 hover:bg-slate-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1.5 shadow-sm">
-          <span>🖨️</span> Imprimir / Reporte
-        </button>
-        <button id="btnNuevoReg" onclick="abrirModalNuevoRegistro()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-1.5 shadow-md">
-          <span>➕</span> Nuevo Registro
-        </button>
-      </div>
-    </div>
-
-    <!-- Filtro exclusivo para Reporte de Producción -->
-    <div id="filtroProduccion" class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mt-4 hidden no-print flex flex-wrap gap-4 items-center">
-      <div>
-        <label class="block text-xs font-semibold text-slate-600">Fecha Inicio:</label>
-        <input type="date" id="fechaInicioProd" class="px-3 py-1.5 border rounded-lg text-sm">
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-600">Fecha Fin:</label>
-        <input type="date" id="fechaFinProd" class="px-3 py-1.5 border rounded-lg text-sm">
-      </div>
-      <div class="self-end">
-        <button onclick="cargarReporteProduccion()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 rounded-lg font-bold">Generar Reporte Analítico</button>
-      </div>
-    </div>
-
-    <!-- Cabecera exclusiva para impresión -->
-    <div id="printHeaderTitle" class="print-header"></div>
-
-    <!-- Contenedor de Tabla -->
-    <div class="bg-white rounded-xl shadow-md border border-slate-200 mt-4 overflow-hidden">
-      <div class="overflow-x-auto">
-        <table id="tablaMantenimiento" class="w-full text-left border-collapse text-xs">
-          <thead id="tablaHead" class="bg-slate-50 text-slate-700 uppercase text-[11px] border-b"></thead>
-          <tbody id="tablaBody" class="divide-y divide-slate-100"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal Dinámico de Edición / Creación -->
-  <div id="modalMantenimiento" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
-      <h3 id="modalTitle" class="text-xl font-bold mb-4 text-slate-800 border-b pb-2">✏️ Editar Registro</h3>
-      <form id="formMantenimiento" onsubmit="guardarRegistro(event)" class="space-y-3">
-        <div id="modalCampos" class="space-y-3"></div>
-        <div class="flex justify-end gap-3 pt-4 border-t">
-          <button type="button" onclick="cerrarModal()" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium">Cancelar</button>
-          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow text-sm">Guardar Cambios</button>
+    <!-- HEADER -->
+    <header class="bg-gray-900 text-white p-4 shadow-md flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <span class="text-2xl">⚙️</span>
+            <h1 class="text-xl font-bold">SIGA - Mantenimiento y Reportes</h1>
         </div>
-      </form>
-    </div>
-  </div>
+        <div class="flex items-center space-x-4">
+            <a href="agenda.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center space-x-1">
+                <span>📅</span> <span>Ir a Agenda</span>
+            </a>
+            <span id="user-email" class="text-sm text-gray-300"></span>
+            <button onclick="cerrarSesion()" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition">
+                Salir
+            </button>
+        </div>
+    </header>
 
-  <script>
-    const SUPABASE_URL = "https://sdrbgwhivwxrmuytrcog.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkcmJnd2hpdnd4cm11eXRyY29nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NTUyNzcsImV4cCI6MjEwNzEzMTI3N30.vsFieR-6tyMgx_fpZhO7RSjA3Z3BzJzR91Xp4rDnObU";
-    const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    let tablaActual = "horarios";
-    let datosTabla = [];
-    let personalCache = {};
-    let registroEnEdicionIndex = null;
-
-    async function protegerRuta() {
-      const { data: { session } } = await _supabase.auth.getSession();
-      if (!session) window.location.href = "login.html";
-      else document.getElementById('userEmail').innerText = session.user.email;
-    }
-    protegerRuta();
-
-    async function cerrarSesion() {
-      await _supabase.auth.signOut();
-      window.location.href = "login.html";
-    }
-
-    async function precargarPersonal() {
-      const { data } = await _supabase.from('personal').select('*');
-      if (data) {
-        data.forEach(p => {
-          personalCache[p.id_profesional] = `${p.nombre} ${p.apellido || ''}`.trim();
-        });
-      }
-    }
-
-    async function cambiarTabla() {
-      tablaActual = document.getElementById('selectTabla').value;
-      const filtroProd = document.getElementById('filtroProduccion');
-      const btnNuevo = document.getElementById('btnNuevoReg');
-
-      if (tablaActual === 'reporte_produccion') {
-        filtroProd.classList.remove('hidden');
-        btnNuevo.classList.add('hidden');
-        const hoy = new Date().toISOString().split('T')[0];
-        document.getElementById('fechaInicioProd').value = hoy;
-        document.getElementById('fechaFinProd').value = hoy;
-        cargarReporteProduccion();
-      } else {
-        filtroProd.classList.add('hidden');
-        btnNuevo.classList.remove('hidden');
-        await cargarDatosTabla();
-      }
-    }
-
-    async function cargarDatosTabla() {
-      await precargarPersonal();
-      const body = document.getElementById('tablaBody');
-      const head = document.getElementById('tablaHead');
-      body.innerHTML = `<tr><td colspan="10" class="p-8 text-center text-slate-500">Cargando datos...</td></tr>`;
-
-      const { data, error } = await _supabase.from(tablaActual).select('*');
-      if (error) {
-        body.innerHTML = `<tr><td colspan="10" class="p-8 text-center text-red-500">Error: ${error.message}</td></tr>`;
-        return;
-      }
-
-      datosTabla = data || [];
-      if (datosTabla.length === 0) {
-        head.innerHTML = `<tr><th class="p-3">Información</th></tr>`;
-        body.innerHTML = `<tr><td class="p-6 text-center text-slate-400">No hay registros en esta tabla.</td></tr>`;
-        return;
-      }
-
-      const columnas = Object.keys(datosTabla[0]);
-      let headHtml = `<tr>`;
-      columnas.forEach(col => {
-        headHtml += `<th class="p-2.5">${col.toUpperCase()}</th>`;
-      });
-      headHtml += `<th class="p-2.5 text-center no-print">Acciones</th></tr>`;
-      head.innerHTML = headHtml;
-
-      let bodyHtml = '';
-      datosTabla.forEach((row, idx) => {
-        const esDescanso = tablaActual === 'horarios' && row.estado === 'DESCANSA';
-        const claseFila = esDescanso ? 'text-red-600 font-semibold bg-red-50/50' : 'hover:bg-slate-50';
-
-        bodyHtml += `<tr class="${claseFila} transition">`;
-        columnas.forEach(col => {
-          let val = row[col] !== null && row[col] !== undefined ? row[col] : '';
-          if (col === 'id_profesional' && personalCache[val]) {
-            val = `<span class="font-semibold text-blue-600">${val}</span> (${personalCache[val]})`;
-          }
-          bodyHtml += `<td class="p-2">${val}</td>`;
-        });
-
-        bodyHtml += `
-          <td class="p-2 text-center flex justify-center gap-1.5 no-print">
-            <button onclick="abrirModalEditar(${idx})" class="bg-amber-100 hover:bg-amber-200 text-amber-800 px-2 py-0.5 rounded text-[11px] font-semibold">✏️ Editar</button>
-            <button onclick="eliminarRegistro(${idx})" class="bg-red-100 hover:bg-red-200 text-red-800 px-2 py-0.5 rounded text-[11px] font-semibold">🗑️ Borrar</button>
-          </td>
-        `;
-        bodyHtml += `</tr>`;
-      });
-      body.innerHTML = bodyHtml;
-    }
-
-    async function cargarReporteProduccion() {
-      await precargarPersonal();
-      const fInicio = document.getElementById('fechaInicioProd').value;
-      const fFin = document.getElementById('fechaFinProd').value;
-
-      const body = document.getElementById('tablaBody');
-      const head = document.getElementById('tablaHead');
-      body.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-500">Calculando reporte de producción...</td></tr>`;
-
-      const { data: citas, error } = await _supabase
-        .from('citas')
-        .select(`
-          id_cita, fecha, estado,
-          detalle_cita (id_servicio, id_profesional, hora_inicio, hora_fin, servicios(nombre_servicio, precio))
-        `)
-        .gte('fecha', fInicio)
-        .lte('fecha', fFin);
-
-      if (error) {
-        body.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-red-500">Error: ${error.message}</td></tr>`;
-        return;
-      }
-
-      let resumenPersonal = {};
-      Object.keys(personalCache).forEach(idProf => {
-        resumenPersonal[idProf] = {
-          nombre: personalCache[idProf],
-          serviciosRealizados: {},
-          tiempoOcupadoMinutos: 0,
-          produccionTotal: 0
-        };
-      });
-
-      (citas || []).forEach(c => {
-        if (c.estado !== 'CANCELADA' && c.detalle_cita) {
-          c.detalle_cita.forEach(det => {
-            const prof = det.id_profesional;
-            if (!resumenPersonal[prof]) {
-              resumenPersonal[prof] = { nombre: prof, serviciosRealizados: {}, tiempoOcupadoMinutos: 0, produccionTotal: 0 };
-            }
-
-            const nombreServ = det.servicios ? det.servicios.nombre_servicio : 'General';
-            const precioServ = det.servicios && det.servicios.precio ? parseFloat(det.servicios.precio) : 0;
-            
-            let minutosServicio = 30;
-            if (det.hora_inicio && det.hora_fin) {
-              const [hIni, mIni] = det.hora_inicio.substring(0,5).split(':').map(Number);
-              const [hFin, mFin] = det.hora_fin.substring(0,5).split(':').map(Number);
-              const diff = (hFin * 60 + mFin) - (hIni * 60 + mIni);
-              if (diff > 0) minutosServicio = diff;
-            }
-
-            resumenPersonal[prof].tiempoOcupadoMinutos += minutosServicio;
-            resumenPersonal[prof].produccionTotal += precioServ;
-
-            if (!resumenPersonal[prof].serviciosRealizados[nombreServ]) {
-              resumenPersonal[prof].serviciosRealizados[nombreServ] = 0;
-            }
-            resumenPersonal[prof].serviciosRealizados[nombreServ]++;
-          });
-        }
-      });
-
-      const minutosJornadaTotalDiaria = 600; 
-      const diffDias = Math.max(1, Math.ceil((new Date(fFin) - new Date(fInicio)) / (1000 * 60 * 60 * 24)) + 1);
-
-      head.innerHTML = `
-        <tr>
-          <th class="p-2.5">TRABAJADORA</th>
-          <th class="p-2.5">SERVICIOS REALIZADOS</th>
-          <th class="p-2.5">TIEMPO OCUPADO (REAL)</th>
-          <th class="p-2.5">TIEMPO LIBRE / INACTIVO</th>
-          <th class="p-2.5">PRODUCCIÓN TOTAL</th>
-        </tr>
-      `;
-
-      let bodyHtml = '';
-      Object.keys(resumenPersonal).forEach(idProf => {
-        const item = resumenPersonal[idProf];
-        const horasOcupadas = (item.tiempoOcupadoMinutos / 60).toFixed(1);
-        const minutosDisponiblesTotales = minutosJornadaTotalDiaria * diffDias;
-        const minutosLibres = Math.max(0, minutosDisponiblesTotales - item.tiempoOcupadoMinutos);
-        const horasLibres = (minutosLibres / 60).toFixed(1);
-
-        let serviciosStr = Object.entries(item.serviciosRealizados).map(([s, cant]) => `${s}: ${cant}`).join('<br>');
-        if (!serviciosStr) serviciosStr = 'Ninguno';
-
-        bodyHtml += `
-          <tr class="hover:bg-slate-50">
-            <td class="p-2 font-semibold text-slate-700">${item.nombre} (${idProf})</td>
-            <td class="p-2 text-[11px]">${serviciosStr}</td>
-            <td class="p-2">${item.tiempoOcupadoMinutos} min (${horasOcupadas} hrs)</td>
-            <td class="p-2 text-amber-700 font-semibold">${minutosLibres} min (${horasLibres} hrs)</td>
-            <td class="p-2 font-bold text-emerald-700">S/ ${item.produccionTotal.toFixed(2)}</td>
-          </tr>
-        `;
-      });
-
-      datosTabla = Object.values(resumenPersonal);
-      body.innerHTML = bodyHtml;
-    }
-
-    function imprimirReporte() {
-      const ahora = new Date();
-      const fechaStr = ahora.toLocaleDateString('es-ES');
-      const horaStr = ahora.toLocaleTimeString('es-ES');
-      const tituloModulo = tablaActual === 'reporte_produccion' ? 'REPORTE ANALÍTICO DE PRODUCCIÓN Y TIEMPOS' : `REPORTE DE LA TABLA: ${tablaActual.toUpperCase()}`;
-
-      const headerDiv = document.getElementById('printHeaderTitle');
-      headerDiv.innerText = `${tituloModulo} | FECHA: ${fechaStr} - HORA: ${horaStr}`;
-      
-      window.print();
-    }
-
-    function obtenerClavePrimaria(row) {
-      if (row.id_horario) return { campo: 'id_horario', valor: row.id_horario };
-      if (row.id_profesional && row.dia_semana && tablaActual === 'horarios') return { compuesto: true, id_profesional: row.id_profesional, dia_semana: row.dia_semana };
-      if (row.id_servicio) return { campo: 'id_servicio', valor: row.id_servicio };
-      if (row.id_personal) return { campo: 'id_personal', valor: row.id_personal };
-      if (row.id_profesional) return { campo: 'id_profesional', valor: row.id_profesional };
-      if (row.id_cliente) return { campo: 'id_cliente', valor: row.id_cliente };
-      if (row.parametro) return { campo: 'parametro', valor: row.parametro };
-      const primeraCol = Object.keys(row)[0];
-      return { campo: primeraCol, valor: row[primeraCol] };
-    }
-
-    function abrirModalNuevoRegistro() {
-      if (datosTabla.length === 0) {
-        alert("No hay estructura definida para esta tabla.");
-        return;
-      }
-      registroEnEdicionIndex = null;
-      document.getElementById('modalTitle').innerText = `➕ Nuevo Registro en ${tablaActual.toUpperCase()}`;
-      
-      const columnas = Object.keys(datosTabla[0]);
-      let camposHtml = '';
-      columnas.forEach(col => {
-        // MEJORA: Si la columna es 'descripcion', usamos un textarea para mayor comodidad
-        if (col === 'descripcion') {
-          camposHtml += `
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col}</label>
-              <textarea name="${col}" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Ingrese ${col}..."></textarea>
-            </div>
-          `;
-        } else {
-          camposHtml += `
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col}</label>
-              <input type="text" name="${col}" class="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Ingrese ${col}...">
-            </div>
-          `;
-        }
-      });
-      document.getElementById('modalCampos').innerHTML = camposHtml;
-      document.getElementById('modalMantenimiento').classList.remove('hidden');
-    }
-
-    function abrirModalEditar(idx) {
-      registroEnEdicionIndex = idx;
-      const row = datosTabla[idx];
-      document.getElementById('modalTitle').innerText = `✏️ Editar Registro (${tablaActual.toUpperCase()})`;
-
-      const columnas = Object.keys(row);
-      let camposHtml = '';
-      columnas.forEach(col => {
-        const valorActual = row[col] !== null && row[col] !== undefined ? row[col] : '';
-        const esClavePrincipal = col === 'id_horario' || col === 'id_servicio' || col === 'id_profesional' || col === 'id_cliente' || col === 'parametro';
+    <!-- CONTENIDO PRINCIPAL -->
+    <main class="max-w-7xl mx-auto p-6">
         
-        // MEJORA: Si la columna es 'descripcion', usamos un textarea al editar
-        if (col === 'descripcion') {
-          camposHtml += `
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col} ${esClavePrincipal ? '(ID)' : ''}</label>
-              <textarea name="${col}" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50">${valorActual}</textarea>
+        <!-- CONTROLES SUPERIORES -->
+        <div class="bg-white p-4 rounded-xl shadow-sm mb-6 flex flex-wrap gap-4 justify-between items-center no-print">
+            
+            <div class="flex flex-wrap items-center gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Seleccionar Módulo:</label>
+                    <select id="select-tabla" onchange="cambiarModulo()" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="servicios">Servicios</option>
+                        <option value="clientes">Clientes</option>
+                        <option value="personal">Personal / Trabajadoras</option>
+                        <option value="citas">Citas</option>
+                        <option value="detalle_cita">Detalle Cita</option>
+                    </select>
+                </div>
+
+                <!-- BUSCADOR ÁGIL EN TIEMPO REAL -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Buscar Registro:</label>
+                    <div class="relative">
+                        <input type="text" id="input-busqueda" onkeyup="filtrarTabla()" placeholder="Escribe para buscar..." class="border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64 bg-white">
+                        <span class="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
+                    </div>
+                </div>
             </div>
-          `;
-        } else {
-          camposHtml += `
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">${col} ${esClavePrincipal ? '(ID)' : ''}</label>
-              <input type="text" name="${col}" value="${valorActual}" class="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50">
+
+            <div class="flex items-center space-x-2">
+                <button onclick="exportarCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center space-x-1">
+                    <span>📊</span> <span>Exportar Excel (CSV)</span>
+                </button>
+                <button onclick="window.print()" class="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center space-x-1">
+                    <span>🖨️</span> <span>Imprimir / Reporte</span>
+                </button>
+                <button onclick="abrirModalNuevo()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center space-x-1">
+                    <span>➕</span> <span>Nuevo Registro</span>
+                </button>
             </div>
-          `;
+        </div>
+
+        <!-- TABLA DE DATOS -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+            <div id="loading" class="text-center py-10 text-gray-500">Cargando registros...</div>
+            <div class="overflow-x-auto">
+                <table id="tabla-datos" class="w-full text-left border-collapse hidden">
+                    <thead id="tabla-head" class="bg-gray-50 text-gray-600 text-xs uppercase font-semibold border-b border-gray-200">
+                    </thead>
+                    <tbody id="tabla-body" class="divide-y divide-gray-200 text-sm">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAL DE CREACIÓN / EDICIÓN -->
+    <div id="modal-registro" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 m-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4 border-b pb-3">
+                <h3 id="modal-titulo" class="text-lg font-bold text-gray-800">Nuevo Registro</h3>
+                <button onclick="cerrarModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+            </div>
+            <form id="form-registro" onsubmit="guardarRegistro(event)">
+                <div id="modal-inputs" class="space-y-4">
+                    <!-- Los inputs se generan dinámicamente -->
+                </div>
+                <div class="mt-6 flex justify-end space-x-3">
+                    <button type="button" onclick="cerrarModal()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-semibold transition">Cancelar</button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SCRIPT DE SUPABASE Y LÓGICA -->
+    <script>
+        // Configuración de Supabase (las mismas credenciales de tu proyecto)
+        const SUPABASE_URL = 'https://tudominio.supabase.co'; // Asegúrate de mantener tus llaves originales si ya las tienes configuradas
+        const SUPABASE_KEY = 'tu-anon-key'; 
+        // Nota: Si ya tienes tus credenciales arriba en tu archivo original, mantenlas tal cual.
+        
+        let supabaseClient = null;
+        try {
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        } catch(e) {
+            console.error("Error iniciando Supabase", e);
         }
-      });
-      document.getElementById('modalCampos').innerHTML = camposHtml;
-      document.getElementById('modalMantenimiento').classList.remove('hidden');
-    }
 
-    function cerrarModal() {
-      document.getElementById('modalMantenimiento').classList.add('hidden');
-    }
+        let tablaActual = 'servicios';
+        let datosOriginales = [];
+        let camposTabla = [];
+        let pkColumna = 'id_servicio';
 
-    async function guardarRegistro(e) {
-      e.preventDefault();
-      const form = document.getElementById('formMantenimiento');
-      const formData = new FormData(form);
-      let payload = {};
-      
-      formData.forEach((val, key) => {
-        payload[key] = val === "" ? null : val;
-      });
+        const configTablas = {
+            servicios: { pk: 'id_servicio', orden: 'nombre_servicio' },
+            clientes: { pk: 'id_cliente', orden: 'nombre' },
+            personal: { pk: 'id_profesional', orden: 'nombre' },
+            citas: { pk: 'id_cita', orden: 'fecha' },
+            detalle_cita: { pk: 'id_detalle', orden: 'id_cita' }
+        };
 
-      if (registroEnEdicionIndex !== null) {
-        const rowOriginal = datosTabla[registroEnEdicionIndex];
-        const pk = obtenerClavePrimaria(rowOriginal);
-
-        let query = _supabase.from(tablaActual).update(payload);
-        if (pk.compuesto) {
-          query = query.eq('id_profesional', pk.id_profesional).eq('dia_semana', pk.dia_semana);
-        } else {
-          query = query.eq(pk.campo, pk.valor);
+        async function verificarSesion() {
+            if(!supabaseClient) return;
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (!session) {
+                window.location.href = 'login.html';
+            } else {
+                document.getElementById('user-email').textContent = session.user.email;
+                cargarDatos();
+            }
         }
 
-        const { error } = await query;
-        if (error) { alert("Error al actualizar: " + error.message); return; }
-      } else {
-        const { error } = await _supabase.from(tablaActual).insert([payload]);
-        if (error) { alert("Error al insertar: " + error.message); return; }
-      }
+        function cerrarSesion() {
+            if(supabaseClient) supabaseClient.auth.signOut();
+            window.location.href = 'login.html';
+        }
 
-      cerrarModal();
-      cargarDatosTabla();
-    }
+        function cambiarModulo() {
+            tablaActual = document.getElementById('select-tabla').value;
+            pkColumna = configTablas[tablaActual].pk;
+            document.getElementById('input-busqueda').value = '';
+            cargarDatos();
+        }
 
-    async function eliminarRegistro(idx) {
-      const row = datosTabla[idx];
-      if (!confirm("¿Está plenamente seguro de eliminar este registro de forma permanente?")) return;
+        async function cargarDatos() {
+            if(!supabaseClient) return;
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('tabla-datos').classList.add('hidden');
 
-      const pk = obtenerClavePrimaria(row);
-      let query = _supabase.from(tablaActual).delete();
+            const campoOrden = configTablas[tablaActual].orden;
+            let { data, error } = await supabaseClient
+                .from(tablaActual)
+                .select('*')
+                .order(campoOrden, { ascending: true });
 
-      if (pk.compuesto) {
-        query = query.eq('id_profesional', pk.id_profesional).eq('dia_semana', pk.dia_semana);
-      } else {
-        query = query.eq(pk.campo, pk.valor);
-      }
+            document.getElementById('loading').style.display = 'none';
 
-      const { error } = await query;
-      if (error) { alert("Error al eliminar: " + error.message); return; }
+            if (error) {
+                alert('Error al cargar datos: ' + error.message);
+                return;
+            }
 
-      cargarDatosTabla();
-    }
+            datosOriginales = data || [];
+            renderizarTabla(datosOriginales);
+        }
 
-    function exportarExcel() {
-      if (datosTabla.length === 0) {
-        alert("No hay datos para exportar.");
-        return;
-      }
+        function renderizarTabla(datos) {
+            const tabla = document.getElementById('tabla-datos');
+            const thead = document.getElementById('tabla-head');
+            const tbody = document.getElementById('tabla-body');
 
-      const columnas = Object.keys(datosTabla[0]);
-      let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
-      csvContent += columnas.join(",") + "\r\n";
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
 
-      datosTabla.forEach(row => {
-        let fila = columnas.map(col => {
-          let val = row[col] !== null && row[col] !== undefined ? String(row[col]) : '';
-          return `"${val.replace(/"/g, '""')}"`;
-        });
-        csvContent += fila.join(",") + "\r\n";
-      });
+            if (datos.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="100" class="text-center py-6 text-gray-500">No se encontraron registros.</td></tr>`;
+                tabla.classList.remove('hidden');
+                return;
+            }
 
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `reporte_${tablaActual}_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+            camposTabla = Object.keys(datos[0]);
 
-    cambiarTabla();
-  </script>
+            // Crear Encabezado
+            let headTr = document.createElement('tr');
+            camposTabla.forEach(campo => {
+                let th = document.createElement('th');
+                th.className = "px-6 py-3 font-semibold text-gray-700";
+                th.textContent = campo.toUpperCase();
+                headTr.appendChild(th);
+            });
+            let thAccions = document.createElement('th');
+            thAccions.className = "px-6 py-3 font-semibold text-gray-700 text-right";
+            thAccions.textContent = "ACCIONES";
+            headTr.appendChild(thAccions);
+            thead.appendChild(headTr);
+
+            // Crear Filas
+            datos.forEach(row => {
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 transition border-b border-gray-100";
+
+                camposTabla.forEach(campo => {
+                    let td = document.createElement('td');
+                    td.className = "px-6 py-4 text-gray-700";
+                    let val = row[campo];
+                    if (typeof val === 'boolean') {
+                        td.innerHTML = val ? '<span class="text-green-600 font-bold">Sí</span>' : '<span class="text-red-600 font-bold">No</span>';
+                    } else {
+                        td.textContent = val !== null ? val : '';
+                    }
+                    tr.appendChild(td);
+                });
+
+                let tdAcc = document.createElement('td');
+                tdAcc.className = "px-6 py-4 text-right space-x-2";
+                let pkVal = row[pkColumna];
+
+                tdAcc.innerHTML = `
+                    <button onclick='abrirModalEditar(${JSON.stringify(row)})' class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded text-xs font-semibold transition">Editar</button>
+                    <button onclick='borrarRegistro("${pkVal}")' class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-semibold transition">Borrar</button>
+                `;
+                tr.appendChild(tdAcc);
+                tbody.appendChild(tr);
+            });
+
+            tabla.classList.remove('hidden');
+        }
+
+        function filtrarTabla() {
+            const texto = document.getElementById('input-busqueda').value.toLowerCase();
+            const filtrados = datosOriginales.filter(row => {
+                return Object.values(row.some(val => val !== null && String(val).toLowerCase().includes(texto)));
+            });
+            renderizarTabla(filtrados);
+        }
+
+        function abrirModalNuevo() {
+            document.getElementById('modal-titulo').textContent = "Nuevo Registro";
+            const contenedor = document.getElementById('modal-inputs');
+            contenedor.innerHTML = '';
+            document.getElementById('form-registro').reset();
+
+            // Si hay datos previos, generamos los inputs basados en las columnas detectadas
+            let sample = datosOriginales[0] || {};
+            Object.keys(sample).forEach(campo => {
+                if (campo === pkColumna && tablaActual !== 'detalle_cita') return; // ID autogenerado usualmente
+                contenedor.innerHTML += `
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">${campo}</label>
+                        <input type="text" name="${campo}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                `;
+            });
+            document.getElementById('modal-registro').classList.remove('hidden');
+        }
+
+        function abrirModalEditar(row) {
+            document.getElementById('modal-titulo').textContent = "Editar Registro";
+            const contenedor = document.getElementById('modal-inputs');
+            contenedor.innerHTML = '';
+
+            Object.keys(row).forEach(campo => {
+                let val = row[campo] !== null ? row[campo] : '';
+                let readonly = (campo === pkColumna) ? 'readonly class="w-full border border-gray-200 bg-gray-100 rounded-lg px-3 py-2 text-sm outline-none text-gray-500"' : 'class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"';
+                contenedor.innerHTML += `
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 uppercase mb-1">${campo}</label>
+                        <input type="text" name="${campo}" value="${val}" ${readonly}>
+                    </div>
+                `;
+            });
+            document.getElementById('modal-registro').classList.remove('hidden');
+        }
+
+        function cerrarModal() {
+            document.getElementById('modal-registro').classList.add('hidden');
+        }
+
+        async function guardarRegistro(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const datosObj = {};
+            formData.forEach((val, key) => { datosObj[key] = val !== "" ? val : null; });
+
+            let pkVal = datosObj[pkColumna];
+            let query;
+
+            // Verificamos si existe por PK para hacer Update o Insert
+            let existe = datosOriginales.some(r => String(r[pkColumna]) === String(pkVal));
+
+            if (existe && pkVal) {
+                query = await supabaseClient.from(tablaActual).update(datosObj).eq(pkColumna, pkVal);
+            } else {
+                delete datosObj[pkColumna]; // Dejar que la BD genere el ID si es nuevo
+                query = await supabaseClient.from(tablaActual).insert([datosObj]);
+            }
+
+            if (query.error) {
+                alert('Error al guardar: ' + query.error.message);
+            } else {
+                cerrarModal();
+                cargarDatos();
+            }
+        }
+
+        async function borrarRegistro(pkVal) {
+            if (!confirm('¿Estás seguro de eliminar este registro?')) return;
+
+            const { error } = await supabaseClient.from(tablaActual).delete().eq(pkColumna, pkVal);
+            if (error) {
+                alert('Error al eliminar: ' + error.message);
+            } else {
+                cargarDatos();
+            }
+        }
+
+        function exportarCSV() {
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += camposTabla.join(",") + "\r\n";
+            datosOriginales.forEach(row => {
+                let fila = camposTabla.map(campo => {
+                    let val = row[campo] !== null && row[campo] !== undefined ? String(row[campo]) : '';
+                    return `"${val.replace(/"/g, '""')}"`;
+                });
+                csvContent += fila.join(",") + "\r\n";
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `reporte_${tablaActual}_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Inicializar
+        verificarSesion();
+    </script>
 </body>
 </html>
