@@ -56,11 +56,11 @@
                     </select>
                 </div>
 
-                <!-- BUSCADOR ÁGIL EN TIEMPO REAL -->
+                <!-- BUSCADOR ÁGIL EN TIEMPO REAL (Filtra por cualquier columna) -->
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Buscar Registro:</label>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Búsqueda General:</label>
                     <div class="relative">
-                        <input type="text" id="input-busqueda" onkeyup="filtrarTabla()" placeholder="Escribe para buscar..." class="border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64 bg-white">
+                        <input type="text" id="input-busqueda" onkeyup="filtrarTabla()" placeholder="Buscar por ID, Nombre, Teléfono..." class="border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-72 bg-white">
                         <span class="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
                     </div>
                 </div>
@@ -101,9 +101,7 @@
                 <button onclick="cerrarModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
             </div>
             <form id="form-registro" onsubmit="guardarRegistro(event)">
-                <div id="modal-inputs" class="space-y-4">
-                    <!-- Los inputs se generan dinámicamente -->
-                </div>
+                <div id="modal-inputs" class="space-y-4"></div>
                 <div class="mt-6 flex justify-end space-x-3">
                     <button type="button" onclick="cerrarModal()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-semibold transition">Cancelar</button>
                     <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">Guardar</button>
@@ -114,10 +112,8 @@
 
     <!-- SCRIPT DE SUPABASE Y LÓGICA -->
     <script>
-        // Configuración de Supabase (las mismas credenciales de tu proyecto)
-        const SUPABASE_URL = 'https://tudominio.supabase.co'; // Asegúrate de mantener tus llaves originales si ya las tienes configuradas
-        const SUPABASE_KEY = 'tu-anon-key'; 
-        // Nota: Si ya tienes tus credenciales arriba en tu archivo original, mantenlas tal cual.
+        const SUPABASE_URL = 'https://tudominio.supabase.co'; // Mantén tus llaves originales si ya las usas en tu proyecto
+        const SUPABASE_KEY = 'tu-anon-key';
         
         let supabaseClient = null;
         try {
@@ -130,13 +126,15 @@
         let datosOriginales = [];
         let camposTabla = [];
         let pkColumna = 'id_servicio';
+        let ordenColumnaActual = '';
+        let ordenAscendente = true;
 
         const configTablas = {
-            servicios: { pk: 'id_servicio', orden: 'nombre_servicio' },
-            clientes: { pk: 'id_cliente', orden: 'nombre' },
-            personal: { pk: 'id_profesional', orden: 'nombre' },
-            citas: { pk: 'id_cita', orden: 'fecha' },
-            detalle_cita: { pk: 'id_detalle', orden: 'id_cita' }
+            servicios: { pk: 'id_servicio', ordenDefecto: 'nombre_servicio' },
+            clientes: { pk: 'id_cliente', ordenDefecto: 'nombre' },
+            personal: { pk: 'id_profesional', ordenDefecto: 'nombre' },
+            citas: { pk: 'id_cita', ordenDefecto: 'fecha' },
+            detalle_cita: { pk: 'id_detalle', ordenDefecto: 'id_cita' }
         };
 
         async function verificarSesion() {
@@ -158,6 +156,8 @@
         function cambiarModulo() {
             tablaActual = document.getElementById('select-tabla').value;
             pkColumna = configTablas[tablaActual].pk;
+            ordenColumnaActual = configTablas[tablaActual].ordenDefecto;
+            ordenAscendente = true;
             document.getElementById('input-busqueda').value = '';
             cargarDatos();
         }
@@ -167,11 +167,14 @@
             document.getElementById('loading').style.display = 'block';
             document.getElementById('tabla-datos').classList.add('hidden');
 
-            const campoOrden = configTablas[tablaActual].orden;
+            if(!ordenColumnaActual) {
+                ordenColumnaActual = configTablas[tablaActual].ordenDefecto;
+            }
+
             let { data, error } = await supabaseClient
                 .from(tablaActual)
                 .select('*')
-                .order(campoOrden, { ascending: true });
+                .order(ordenColumnaActual, { ascending: ordenAscendente });
 
             document.getElementById('loading').style.display = 'none';
 
@@ -182,6 +185,16 @@
 
             datosOriginales = data || [];
             renderizarTabla(datosOriginales);
+        }
+
+        function ordenarPorColumna(campo) {
+            if (ordenColumnaActual === campo) {
+                ordenAscendente = !ordenAscendente; // Invierte el orden si hace clic de nuevo
+            } else {
+                ordenColumnaActual = campo;
+                ordenAscendente = true;
+            }
+            cargarDatos(); // Recarga ordenado desde la base de datos o sobre los datos actuales
         }
 
         function renderizarTabla(datos) {
@@ -200,12 +213,14 @@
 
             camposTabla = Object.keys(datos[0]);
 
-            // Crear Encabezado
+            // Crear Encabezado interactivo para ordenar por clic
             let headTr = document.createElement('tr');
             camposTabla.forEach(campo => {
                 let th = document.createElement('th');
-                th.className = "px-6 py-3 font-semibold text-gray-700";
-                th.textContent = campo.toUpperCase();
+                th.className = "px-6 py-3 font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 transition select-none";
+                let indicador = ordenColumnaActual === campo ? (ordenAscendente ? ' 🔼' : ' 🔽') : '';
+                th.innerHTML = `${campo.toUpperCase()}${indicador}`;
+                th.onclick = () => ordenarPorColumna(campo);
                 headTr.appendChild(th);
             });
             let thAccions = document.createElement('th');
@@ -246,10 +261,11 @@
             tabla.classList.remove('hidden');
         }
 
+        // Búsqueda instantánea en tiempo real (por ID, Nombre, Apellido, Teléfono, etc.)
         function filtrarTabla() {
             const texto = document.getElementById('input-busqueda').value.toLowerCase();
             const filtrados = datosOriginales.filter(row => {
-                return Object.values(row.some(val => val !== null && String(val).toLowerCase().includes(texto)));
+                return Object.values(row).some(val => val !== null && String(val).toLowerCase().includes(texto));
             });
             renderizarTabla(filtrados);
         }
@@ -260,10 +276,9 @@
             contenedor.innerHTML = '';
             document.getElementById('form-registro').reset();
 
-            // Si hay datos previos, generamos los inputs basados en las columnas detectadas
             let sample = datosOriginales[0] || {};
             Object.keys(sample).forEach(campo => {
-                if (campo === pkColumna && tablaActual !== 'detalle_cita') return; // ID autogenerado usualmente
+                if (campo === pkColumna && tablaActual !== 'detalle_cita') return;
                 contenedor.innerHTML += `
                     <div>
                         <label class="block text-xs font-bold text-gray-600 uppercase mb-1">${campo}</label>
@@ -304,14 +319,12 @@
 
             let pkVal = datosObj[pkColumna];
             let query;
-
-            // Verificamos si existe por PK para hacer Update o Insert
             let existe = datosOriginales.some(r => String(r[pkColumna]) === String(pkVal));
 
             if (existe && pkVal) {
                 query = await supabaseClient.from(tablaActual).update(datosObj).eq(pkColumna, pkVal);
             } else {
-                delete datosObj[pkColumna]; // Dejar que la BD genere el ID si es nuevo
+                delete datosObj[pkColumna];
                 query = await supabaseClient.from(tablaActual).insert([datosObj]);
             }
 
