@@ -51,12 +51,12 @@
                         <option value="servicios">Servicios</option>
                         <option value="clientes">Clientes</option>
                         <option value="personal">Personal / Trabajadoras</option>
-                        <option value="citas">Citas</option>
-                        <option value="detalle_cita">Detalle Cita</option>
+                        <option value="horarios">Horarios</option>
+                        <option value="instrucciones">Instrucciones</option>
                     </select>
                 </div>
 
-                <!-- BUSCADOR ÁGIL EN TIEMPO REAL (Filtra por cualquier columna) -->
+                <!-- BUSCADOR ÁGIL EN TIEMPO REAL -->
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Búsqueda General:</label>
                     <div class="relative">
@@ -112,8 +112,9 @@
 
     <!-- SCRIPT DE SUPABASE Y LÓGICA -->
     <script>
-        const SUPABASE_URL = "https://sdrbgwhivwxrmuytrcog.supabase.co";
-        const SUPABASE_KEY = 'sb_publishable_x8cddmEhtemL0drwyNd0sw_VqzX7mMy';
+        // PEGA AQUÍ TUS CREDENCIALES REALES DE SUPABASE:
+        const SUPABASE_URL = 'https://TU_URL_REAL_DE_SUPABASE.supabase.co'; 
+        const SUPABASE_KEY = 'TU_PUBLISHABLE_KEY_REAL';
         
         let supabaseClient = null;
         try {
@@ -129,12 +130,13 @@
         let ordenColumnaActual = '';
         let ordenAscendente = true;
 
+        // Configuración de llaves primarias y campos por defecto para ordenamiento
         const configTablas = {
             servicios: { pk: 'id_servicio', ordenDefecto: 'nombre_servicio' },
             clientes: { pk: 'id_cliente', ordenDefecto: 'nombre' },
             personal: { pk: 'id_profesional', ordenDefecto: 'nombre' },
-            citas: { pk: 'id_cita', ordenDefecto: 'fecha' },
-            detalle_cita: { pk: 'id_detalle', ordenDefecto: 'id_cita' }
+            horarios: { pk: 'id_horario', ordenDefecto: 'dia' },
+            instrucciones: { pk: 'id_instruccion', ordenDefecto: 'titulo' }
         };
 
         async function verificarSesion() {
@@ -144,7 +146,7 @@
                 window.location.href = 'login.html';
             } else {
                 document.getElementById('user-email').textContent = session.user.email;
-                cargarDatos();
+                cambiarModulo();
             }
         }
 
@@ -189,12 +191,12 @@
 
         function ordenarPorColumna(campo) {
             if (ordenColumnaActual === campo) {
-                ordenAscendente = !ordenAscendente; // Invierte el orden si hace clic de nuevo
+                ordenAscendente = !ordenAscendente;
             } else {
                 ordenColumnaActual = campo;
                 ordenAscendente = true;
             }
-            cargarDatos(); // Recarga ordenado desde la base de datos o sobre los datos actuales
+            cargarDatos();
         }
 
         function renderizarTabla(datos) {
@@ -261,7 +263,7 @@
             tabla.classList.remove('hidden');
         }
 
-        // Búsqueda instantánea en tiempo real (por ID, Nombre, Apellido, Teléfono, etc.)
+        // Búsqueda instantánea en tiempo real
         function filtrarTabla() {
             const texto = document.getElementById('input-busqueda').value.toLowerCase();
             const filtrados = datosOriginales.filter(row => {
@@ -278,7 +280,7 @@
 
             let sample = datosOriginales[0] || {};
             Object.keys(sample).forEach(campo => {
-                if (campo === pkColumna && tablaActual !== 'detalle_cita') return;
+                if (campo === pkColumna) return; // Asumimos PK autoincremental/generada
                 contenedor.innerHTML += `
                     <div>
                         <label class="block text-xs font-bold text-gray-600 uppercase mb-1">${campo}</label>
@@ -366,7 +368,7 @@
             document.body.removeChild(link);
         }
 
-        // Inicializar
+        // Inicializar sesión y cargar la primera tabla
         verificarSesion();
     </script>
 </body>
